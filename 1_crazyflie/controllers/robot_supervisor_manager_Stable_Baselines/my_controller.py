@@ -16,7 +16,7 @@ from deepbots.supervisor.controllers.robot_supervisor_env import RobotSupervisor
 from utilities import *
 #from PPO_agent import PPOAgent, Transition
 
-from gym.spaces import Box
+from gym.spaces import Box, Discrete
 import numpy as np
 
 import sys
@@ -30,6 +30,9 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
 
     def __init__(self):
         super().__init__()
+        
+        # Crazyflie velocity PID controller
+        self.PID_crazyflie = pid_velocity_fixed_height_controller()
         # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
         
         #[roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
@@ -39,10 +42,12 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
                                      dtype=np.float64)
         
         # Define agent's action space using Gym's Discrete
+        
+        self.action_space = Discrete(6)
         # set the velocity for each motor. The drone has four motors
-        self.action_space = Box(low=np.array([-1.0 , -1.0, -1.0, -1.0]),
-                                     high=np.array([ 1, 1, 1, 1]),
-                                     dtype=np.float64)
+        #self.action_space = Box(low=np.array([-1.0 , -1.0, -1.0, -1.0]),
+        #                             high=np.array([ 1, 1, 1, 1]),
+        #                             dtype=np.float64)
             
         #print("Shape of Box space:",self.observation_space.shape)
         self.robot = self.getSelf()  # Grab the robot reference from the supervisor to access various robot methods
@@ -86,7 +91,13 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.x_global = 0.0
         self.y_global = 0.0
         self.first_time = True
-    
+        self.dt = 1.0
+        self.roll = 0
+        self.pitch = 0
+        self.yaw = 0
+        self.yaw_rate = 0
+        self.v_x = 0
+        self.v_y = 0
         print("DEBUG init DroneRobotSupervisor")
         
 
@@ -113,21 +124,22 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
             
     def get_observations(self):
     
+        self.dt = self.getTime() - self.past_time
         
         if self.first_time:
             self.past_x_global = self.gps.getValues()[0]
             self.past_y_global = self.gps.getValues()[1]
             self.past_time = self.getTime()
             self.first_time = False
-
-	self.dt = self.getTime() - self.past_time
+            
+        
 
         # Get sensor data
         # https://github.com/cyberbotics/webots-doc/blob/master/reference/inertialunit.md
-        roll = self.imu.getRollPitchYaw()[0]
-        pitch = self.imu.getRollPitchYaw()[1]
-        yaw = self.imu.getRollPitchYaw()[2]
-        yaw_rate = self.gyro.getValues()[2] # The angular velocity is measured in radians per second [rad/s].
+        self.roll = self.imu.getRollPitchYaw()[0]
+        self.pitch = self.imu.getRollPitchYaw()[1]
+        self.yaw = self.imu.getRollPitchYaw()[2]
+        self.yaw_rate = self.gyro.getValues()[2] # The angular velocity is measured in radians per second [rad/s].
         self.x_global = self.gps.getValues()[0]
         v_x_global = (self.x_global - self.past_x_global)/self.dt
         self.y_global = self.gps.getValues()[1]
@@ -137,10 +149,10 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.altitude = normalize_to_range(self.alt ,0.1, 5, -1.0, 1.0,clip=True)
 
         # Get body fixed velocities
-        cos_yaw = cos(yaw)
-        sin_yaw = sin(yaw)
-        v_x = v_x_global * cos_yaw + v_y_global * sin_yaw
-        v_y = - v_x_global * sin_yaw + v_y_global * cos_yaw
+        cos_yaw = cos(self.yaw)
+        sin_yaw = sin(self.yaw)
+        self.v_x = v_x_global * cos_yaw + v_y_global * sin_yaw
+        self.v_y = - v_x_global * sin_yaw + v_y_global * cos_yaw
 
         # camera_data = camera.getImage()
 
@@ -154,12 +166,12 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.dist_left = self.range_left.getValue()
         self.range_left_value = normalize_to_range(self.dist_left,2, 2000, -1.0, 1.0,clip=True)
     
-        # TODO Normalizar roll, pitch yaw vx vy
-        roll = normalize_to_range(roll,- pi, pi, -1.0, 1.0,clip=True)
-        pitch = normalize_to_range(pitch,- pi/2, pi/2, -1.0, 1.0,clip=True)
-        yaw_rate = normalize_to_range(yaw_rate,- pi, pi, -1.0, 1.0,clip=True)
-        v_x = normalize_to_range(v_x,0, 10, -1.0, 1.0,clip=True)
-        v_y = normalize_to_range(v_y,0, 10, -1.0, 1.0,clip=True)
+        # Normalize values for RL model 
+        roll = normalize_to_range(self.roll,- pi, pi, -1.0, 1.0,clip=True)
+        pitch = normalize_to_range(self.pitch,- pi/2, pi/2, -1.0, 1.0,clip=True)
+        yaw_rate = normalize_to_range(self.yaw_rate,- pi, pi, -1.0, 1.0,clip=True)
+        v_x = normalize_to_range(self.v_x,0, 10, -1.0, 1.0,clip=True)
+        v_y = normalize_to_range(self.v_y,0, 10, -1.0, 1.0,clip=True)
         
     
         arr = [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
@@ -245,41 +257,62 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
     def render(self, mode='human'): 
         pass
 
-    def take_off(self):
-        print("DEBUG take_off ") 
-        for i in range(len(self.motors)):
-        
-            if i % 2 != 0 :
-                self.motors[i].setVelocity(-10.0) # motor 1 and 3
-            else:
-                self.motors[i].setVelocity(10.0) # motor 2 and 4
-        
+
     def apply_action(self, action):
     
-        
+        forward_desired = 0
+        sideways_desired = 0
+        yaw_desired = 0
+        height_desired = FLYING_ATTITUDE # fixed for this problem
         print("DEBUG apply_action "+str(action)) 
         
-        # the first action is to take off (despegar )
-        if self.first_time:
-            print("DEBUG apply_action PRIMERA VEZ QUE ENTRO ") 
-            self.take_off()
-            
-        else: 
+        #action = int(action[0])
+        action = int(action)
+        if action == 0:
+            forward_desired = 0.5 # go forward
         
-            if self.getTime() < 10: 
-                self.take_off()
-            else:
+        if action == 1:
+            forward_desired = -0.5 # go backwards
             
-                for i in range(len(self.motors)):
-                    aux =  convert_to_interval_0_600(float(action[i]))
-                    print("DEBUG action %d : %f" % (i,aux))
-                    if i % 2 != 0 :
-                       self.motors[i].setVelocity(-aux) # motor 1 and 3
-                    else:
-                       self.motors[i].setVelocity(aux) # motor 2 and 4
-                    
+        if action == 2: # move left
+            sideways_desired = 0.5
+            
+        if action == 3:
+            sideways_desired = -0.5 # move right
+        
+        if action == 4:
+            yaw_desired = 1 # turn left
+            
+        if action == 5:
+            yaw_desired = -1  # turn right      
+            
+        print("DEBUG dt "+str(self.dt)) 
+        # PID velocity controller with fixed height
+        motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
+                                        yaw_desired, height_desired,
+                                        self.roll, self.pitch, self.yaw_rate,
+                                        self.altitude, self.v_x, self.v_y)
+        self.setup_motors_velocity(motor_power)
+        #m1_motor.setVelocity(-motor_power[0])
+        #m2_motor.setVelocity(motor_power[1])
+        #m3_motor.setVelocity(-motor_power[2])
+        #m4_motor.setVelocity(motor_power[3])
+
         self.past_time = self.getTime()
         self.past_x_global = self.x_global
         self.past_y_global = self.y_global
         
+    def setup_motors_velocity(self,motor_power):
+        """
+        This method initializes the four wheels, storing the references inside a list and setting the starting
+        positions and velocities.
+        """
+       
+        for i in range(len(self.motors)):
+            self.motors[i].setPosition(float('inf'))
+            if i % 2 != 0 :
+                self.motors[i].setVelocity(-motor_power[i]) # motor 1 and 3
+            else:
+                self.motors[i].setVelocity(motor_power[i]) # motor 2 and 4
         
+

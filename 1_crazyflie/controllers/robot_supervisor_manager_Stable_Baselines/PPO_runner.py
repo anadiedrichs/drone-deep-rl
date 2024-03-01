@@ -12,20 +12,7 @@ def run():
     # Initialize supervisor object
     env = DroneRobotSupervisor()
     
-                     #// Wait for 2 seconds
-     # while (wb_robot_step(timestep) != -1) {
-     #   if (wb_robot_get_time() > 2.0)
-     #     break;
-     # }
 
-#    timestep = int(env.getBasicTimeStep())
-    
-#    while env.step(timestep) != -1:
-
-#        if robot.getTime() > 10:
-#            break
-            
-            
     # Verify that the environment is working as a gym-style env
     # check_env(env)
     
