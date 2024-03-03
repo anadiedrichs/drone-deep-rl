@@ -87,7 +87,7 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.steps_per_episode = 200  # Max number of steps per episode
         self.episode_score = 0  # Score accumulated during an episode
         self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
-        self.altitude = 0.0
+        self.altitude = 0 # alt normalized 
         self.x_global = 0.0
         self.y_global = 0.0
         self.first_time = True
@@ -98,7 +98,15 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.yaw_rate = 0
         self.v_x = 0
         self.v_y = 0
+        self.alt = 0 # in meters 
+        self.the_drone_took_off = False
         print("DEBUG init DroneRobotSupervisor")
+        
+        #motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
+        #                                0, FLYING_ATTITUDE,
+        #                                self.roll, self.pitch, self.yaw_rate,
+        #                                self.alt, self.v_x, self.v_y)
+        #self.setup_motors_velocity(motor_power)
         
 
     
@@ -139,15 +147,15 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.roll = self.imu.getRollPitchYaw()[0]
         self.pitch = self.imu.getRollPitchYaw()[1]
         self.yaw = self.imu.getRollPitchYaw()[2]
-        self.yaw_rate = self.gyro.getValues()[2] # The angular velocity is measured in radians per second [rad/s].
+        # The angular velocity is measured in radians per second [rad/s].c
+        self.yaw_rate = self.gyro.getValues()[2] 
         self.x_global = self.gps.getValues()[0]
         v_x_global = (self.x_global - self.past_x_global)/self.dt
         self.y_global = self.gps.getValues()[1]
         v_y_global = (self.y_global - self.past_y_global)/self.dt
         
         self.alt = self.gps.getValues()[2]
-        self.altitude = normalize_to_range(self.alt ,0.1, 5, -1.0, 1.0,clip=True)
-
+        
         # Get body fixed velocities
         cos_yaw = cos(self.yaw)
         sin_yaw = sin(self.yaw)
@@ -158,23 +166,42 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
 
         # to get the value in meters you have to divide by 1000
         self.dist_front = self.range_front.getValue()
-        self.range_front_value = normalize_to_range(self.dist_front,2, 2000, -1.0, 1.0,clip=True)
         self.dist_back = self.range_back.getValue()
-        self.range_back_value = normalize_to_range(self.dist_back,2, 2000, -1.0, 1.0,clip=True)
         self.dist_right = self.range_right.getValue()
-        self.range_right_value = normalize_to_range(self.dist_right,2, 2000, -1.0, 1.0,clip=True)
         self.dist_left = self.range_left.getValue()
-        self.range_left_value = normalize_to_range(self.dist_left,2, 2000, -1.0, 1.0,clip=True)
-    
+        
         # Normalize values for RL model 
         roll = normalize_to_range(self.roll,- pi, pi, -1.0, 1.0,clip=True)
         pitch = normalize_to_range(self.pitch,- pi/2, pi/2, -1.0, 1.0,clip=True)
         yaw_rate = normalize_to_range(self.yaw_rate,- pi, pi, -1.0, 1.0,clip=True)
         v_x = normalize_to_range(self.v_x,0, 10, -1.0, 1.0,clip=True)
         v_y = normalize_to_range(self.v_y,0, 10, -1.0, 1.0,clip=True)
+        self.altitude = normalize_to_range(self.alt ,0.1, 5, -1.0, 1.0,clip=True)
+        range_front_value = normalize_to_range(self.dist_front,2, 2000, -1.0, 1.0,clip=True)
+        range_back_value = normalize_to_range(self.dist_back,2, 2000, -1.0, 1.0,clip=True)
+        range_right_value = normalize_to_range(self.dist_right,2, 2000, -1.0, 1.0,clip=True)
+        range_left_value = normalize_to_range(self.dist_left,2, 2000, -1.0, 1.0,clip=True)
+    
+       
+        print("====== SENSORS observations =======\n")
+        print("dt   " + str(self.dt) )
+        print("Roll   " + str(self.roll) )
+        print("Pitch  " + str(self.pitch) )
+        print("Yaw    " + str(self.yaw) )        
+        print("Yaw rate: " + str(self.yaw_rate) )        
+        print("x_global: " + str(self.x_global) )
+        print("v_x_global: " + str(self.v_x) )
+        print("y_global: " + str(self.y_global) )
+        print("v_y_global: " + str(self.v_y) )        
+        print("altitude: " + str(self.alt) )
+        print("range_front: " + str(self.dist_front) )
+        print("range_right: " + str(self.dist_right) )
+        print("range_left: " + str(self.dist_left) )
+        print("range_back: " + str(self.dist_back) )
+        print("==================================\n")
         
     
-        arr = [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
+        arr = [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,range_front_value, range_back_value ,range_right_value, range_left_value ]
         
         arr = np.array(arr)
         
@@ -211,9 +238,9 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         else:
             r += 10
         # check the drone's altitude     
-        if self.alt < 1 or self.alt > 1.5 :
+        if self.alt < 1 or self.alt > 1.5 : # in meters 
             r += - 10
-            print("DEBUG Reward altura inadecuada " + str(r))
+            print("DEBUG Reward altura inadecuada " + str(self.alt))
         else: 
             r += 10
         
@@ -227,14 +254,6 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         
         if self.episode_score > 195.0:
             return True
-
-        #pole_angle = round(self.position_sensor.getValue(), 2)
-        #if abs(pole_angle) > 0.261799388:  # more than 15 degrees off vertical (defined in radians)
-        #    return True
-
-        #cart_position = round(self.robot.getPosition()[0], 2)  # Position on x-axis
-        #if abs(cart_position) > 0.39:
-        #    return True
 
         return False
 
@@ -264,40 +283,55 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         sideways_desired = 0
         yaw_desired = 0
         height_desired = FLYING_ATTITUDE # fixed for this problem
+        
         print("DEBUG apply_action "+str(action)) 
         
-        #action = int(action[0])
-        action = int(action)
-        if action == 0:
-            forward_desired = 0.5 # go forward
+        if self.the_drone_took_off:
+            #action = int(action[0])
+            action = int(action)
+            if action == 0:
+                forward_desired = 0.5 # go forward
+            
+            if action == 1:
+                forward_desired = -0.5 # go backwards
+                
+            if action == 2: # move left
+                sideways_desired = 0.5
+                
+            if action == 3:
+                sideways_desired = -0.5 # move right
+            
+            if action == 4:
+                yaw_desired = 1 # turn left
+                
+            if action == 5:
+                yaw_desired = -1  # turn right      
+                
+            
+            # PID velocity controller with fixed height
+            motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
+                                            yaw_desired, height_desired,
+                                            self.roll, self.pitch, self.yaw_rate,
+                                            self.alt, self.v_x, self.v_y)
+            self.setup_motors_velocity(motor_power)
+            
+          
+        else:
         
-        if action == 1:
-            forward_desired = -0.5 # go backwards
-            
-        if action == 2: # move left
-            sideways_desired = 0.5
-            
-        if action == 3:
-            sideways_desired = -0.5 # move right
+                        # PID velocity controller with fixed height
+            motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
+                                            yaw_desired, height_desired,
+                                            self.roll, self.pitch, self.yaw_rate,
+                                            self.alt, self.v_x, self.v_y)
+            self.setup_motors_velocity(motor_power)
         
-        if action == 4:
-            yaw_desired = 1 # turn left
-            
-        if action == 5:
-            yaw_desired = -1  # turn right      
-            
-        print("DEBUG dt "+str(self.dt)) 
-        # PID velocity controller with fixed height
-        motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
-                                        yaw_desired, height_desired,
-                                        self.roll, self.pitch, self.yaw_rate,
-                                        self.altitude, self.v_x, self.v_y)
-        self.setup_motors_velocity(motor_power)
-        #m1_motor.setVelocity(-motor_power[0])
-        #m2_motor.setVelocity(motor_power[1])
-        #m3_motor.setVelocity(-motor_power[2])
-        #m4_motor.setVelocity(motor_power[3])
 
+            print("ENTRO AL FALSE " ) 
+            
+            if self.alt >= 1 and self.alt <= 1.5:
+                print(" self.alt " + str(self.alt))
+                self.the_drone_took_off = True
+        
         self.past_time = self.getTime()
         self.past_x_global = self.x_global
         self.past_y_global = self.y_global
@@ -307,12 +341,40 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         This method initializes the four wheels, storing the references inside a list and setting the starting
         positions and velocities.
         """
-       
-        for i in range(len(self.motors)):
-            self.motors[i].setPosition(float('inf'))
-            if i % 2 != 0 :
-                self.motors[i].setVelocity(-motor_power[i]) # motor 1 and 3
-            else:
-                self.motors[i].setVelocity(motor_power[i]) # motor 2 and 4
+        print("DEBUG setup_motors "+str(motor_power)) 
         
+        self.motors[0].setVelocity(-motor_power[0])
+        self.motors[1].setVelocity(motor_power[1])
+        self.motors[2].setVelocity(-motor_power[2])
+        self.motors[3].setVelocity(motor_power[3])
+        print("====== Motors velocity =======\n")
+        print(" m1 " + str(-motor_power[0]) ) # 1
+        print(" m2 " + str(motor_power[1]) )  # 2
+        print(" m3 " + str(-motor_power[2]) ) # 3       
+        print(" m4 " + str(motor_power[3]) )  # 4
+       
+               
+        
+    def take_off(self):
+        """
+        
+        """
+        
+        while self.step(self.timestep) != -1:       
 
+            #if self.the_drone_took_off:
+            #    break
+                
+            print ('Press 1 if the drone took off')
+            key=self.keyboard.getKey()
+            
+            if (key==ord('1')):
+                print ('You pressed 1')
+                break
+            if self.the_drone_took_off:
+                print("DESPEGOOOOOOOOOOOOOOOOOO")
+                #break
+                # si ROMPO ESTE BUCLE drone se cae
+
+            
+                

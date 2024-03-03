@@ -80,8 +80,8 @@ if __name__ == '__main__':
 
     # Crazyflie velocity PID controller
     PID_crazyflie = pid_velocity_fixed_height_controller()
-    PID_update_last_time = robot.getTime()
-    sensor_read_last_time = robot.getTime()
+    # PID_update_last_time = robot.getTime()
+    # sensor_read_last_time = robot.getTime()
 
     height_desired = FLYING_ATTITUDE
 
@@ -99,8 +99,7 @@ if __name__ == '__main__':
     while robot.step(timestep) != -1:
 
         dt = robot.getTime() - past_time
-        actual_state = {}
-
+        
         if first_time:
             past_x_global = gps.getValues()[0]
             past_y_global = gps.getValues()[1]
@@ -125,29 +124,38 @@ if __name__ == '__main__':
         v_y = - v_x_global * sin_yaw + v_y_global * cos_yaw
 
         # Initialize values
-        desired_state = [0, 0, 0, 0]
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
         height_diff_desired = 0
-
+        
+                # get range in meters
+        range_front_value = range_front.getValue() / 1000
+        range_right_value = range_right.getValue() / 1000
+        range_left_value = range_left.getValue() / 1000
+        
+        
+        print("====== SENSORS observations =======\n")
+        print(" dt   " + str(dt) )
+        print(" Roll   " + str(roll) )
+        print(" Pitch  " + str(pitch) )
+        print(" Yaw    " + str(yaw) )        
+        print("Yaw rate: " + str(yaw_rate) )        
+        print("x_global: " + str(x_global) )
+        print("v_x_global: " + str(v_x_global) )
+        print("y_global: " + str(y_global) )
+        print("v_y_global: " + str(v_y_global) )        
+        print("altitude: " + str(altitude) )
+        print("range_front: " + str(range_front_value) )
+        print("range_right: " + str(range_right_value) )
+        print("range_left: " + str(range_left_value) )
+        print("==================================\n")
+            
+            
         key = keyboard.getKey()
         while key > 0:
         
-            print("====== SENSORS observations =======\n")
-            print(" Roll   " + str(roll) )
-            print(" Pitch  " + str(pitch) )
-            print(" Yaw    " + str(yaw) )        
-            print("Yaw rate: " + str(yaw_rate) )        
-            print("x_global: " + str(x_global) )
-            print("v_x_global: " + str(v_x_global) )
-            print("y_global: " + str(y_global) )
-            print("v_y_global: " + str(v_y_global) )        
-            print("altitude: " + str(altitude) )
-            print("range_front: " + str(range_front_value) )
-            print("range_right: " + str(range_right_value) )
-            print("range_left: " + str(range_left_value) )
-            print("==================================\n")
+
             
             if key == Keyboard.UP:
                 forward_desired += 0.5
@@ -172,11 +180,7 @@ if __name__ == '__main__':
 
  #       camera_data = camera.getImage()
 
-        # get range in meters
-        range_front_value = range_front.getValue() / 1000
-        range_right_value = range_right.getValue() / 1000
-        range_left_value = range_left.getValue() / 1000
-        
+
         print("====== desired values =======\n")
         print(" forward " + str(forward_desired) )
         print(" sideways " + str(sideways_desired) )
