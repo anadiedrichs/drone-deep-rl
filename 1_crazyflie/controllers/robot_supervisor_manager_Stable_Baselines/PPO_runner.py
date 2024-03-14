@@ -12,10 +12,26 @@ def run():
     # Initialize supervisor object
     env = DroneRobotSupervisor()
     
+    # Verify that the environment is working as a gym-style env
+    # check_env(env)
+        
     # despegar drone
     env.take_off()
     
-    if(True):
+    #obs, info = env.reset()
+    n_steps = 10
+    
+    for _ in range(n_steps):
+        # Random action
+        action = env.action_space.sample()
+        print("ACTION "+str(action))
+        
+        obs, reward, terminated, truncated, info = env.step(action)
+        
+        if done:
+            obs, info = env.reset()
+    
+    if(False):
         # Verify that the environment is working as a gym-style env
         # check_env(env)
         
