@@ -123,11 +123,9 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         
         for i in range(len(self.motors)):
             self.motors[i].setPosition(float('inf'))
-            if i % 2 == 0 :
-                self.motors[i].setVelocity(1.0) # motor 1 and 3, index 0 and 2
-            else:
-                self.motors[i].setVelocity(-1.0) # motor 2 and 4        
-            
+        
+        self.setup_motors_velocity(np.array([1.0,1.0,1.0,1.0]))
+        
             
     def get_observations(self):
     
