@@ -80,8 +80,8 @@ if __name__ == '__main__':
 
     # Crazyflie velocity PID controller
     PID_crazyflie = pid_velocity_fixed_height_controller()
-    PID_update_last_time = robot.getTime()
-    sensor_read_last_time = robot.getTime()
+    #PID_update_last_time = robot.getTime()
+    #sensor_read_last_time = robot.getTime()
 
     height_desired = FLYING_ATTITUDE
 
@@ -177,7 +177,20 @@ if __name__ == '__main__':
         range_right_value = range_right.getValue() / 1000
         range_left_value = range_left.getValue() / 1000
         
-
+        print("====== PID input =======\n")
+        print("dt   " + str(dt) )
+        print("forward_desired   " + str(forward_desired) )
+        print("sideways_desired   " + str(sideways_desired) )
+        print("yaw_desired   " + str(yaw_desired) )
+        print("height_desired   " + str(height_desired) )        
+        print("roll  " + str(roll) )
+        print("Pitch  " + str(pitch) )   
+        print("Yaw rate: " + str(yaw_rate) )              
+        print("altitude: " + str(altitude) )
+        print("v_x: " + str(v_x) )
+        print("v_y: " + str(v_y) )
+        print("==================================\n")
+        
         # PID velocity controller with fixed height
         motor_power = PID_crazyflie.pid(dt, forward_desired, sideways_desired,
                                         yaw_desired, height_desired,
@@ -188,7 +201,13 @@ if __name__ == '__main__':
         m2_motor.setVelocity(motor_power[1])
         m3_motor.setVelocity(-motor_power[2])
         m4_motor.setVelocity(motor_power[3])
-
+        
+        print("====== Motors velocity =======\n")
+        print(" m1 " + str(-motor_power[0]) ) # 1
+        print(" m2 " + str(motor_power[1]) )  # 2
+        print(" m3 " + str(-motor_power[2]) ) # 3       
+        print(" m4 " + str(motor_power[3]) )  # 4
+        
         past_time = robot.getTime()
         past_x_global = x_global
         past_y_global = y_global
