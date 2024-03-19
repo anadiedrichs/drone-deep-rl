@@ -13,26 +13,29 @@ from controller import DistanceSensor
 from math import cos, sin, pi
 
 from deepbots.supervisor.controllers.robot_supervisor_env import RobotSupervisorEnv
+from controller import Supervisor
 from utilities import *
 
 from gym.spaces import Box, Discrete
 import numpy as np
 
-import sys
-sys.path.append('../../../../controllers_shared/python_based')
+#import sys
+#sys.path.append('../../../../controllers_shared/python_based')
 
 from pid_controller import pid_velocity_fixed_height_controller
 
-FLYING_ATTITUDE = 1.0
+FLYING_ATTITUDE = 0.1
+MAX_HEIGHT = 1 # in meters
+HEIGHT_INCREASE = 0.05 # 5 cm
+HEIGHT_INITIAL = 0.3 # 5 cm
 
 class DroneRobotSupervisor(RobotSupervisorEnv):
 
     def __init__(self):
+    
         super().__init__()
         
-        # Crazyflie velocity PID controller
-        self.PID_crazyflie = pid_velocity_fixed_height_controller()
-        # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
+         # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
         
         #[roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
         
@@ -42,22 +45,68 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         
         # Define agent's action space using Gym's Discrete
         
-        self.action_space = Discrete(6)
-        # set the velocity for each motor. The drone has four motors
-        #self.action_space = Box(low=np.array([-1.0 , -1.0, -1.0, -1.0]),
-        #                             high=np.array([ 1, 1, 1, 1]),
-        #                             dtype=np.float64)
+        self.action_space = Discrete(7)
+
             
-        #print("Shape of Box space:",self.observation_space.shape)
-        self.robot = self.getSelf()  # Grab the robot reference from the supervisor to access various robot methods
         
         timestep = int(self.getBasicTimeStep())
         self.timestep = timestep
+             
+        # Crazyflie velocity PID controller
+        self.PID_crazyflie = None
+         
+        # Initialize Sensors
+        # https://github.com/cyberbotics/webots-doc/blob/master/reference/inertialunit.md
+        self.imu = None
+        self.gps = None
+        # https://github.com/cyberbotics/webots-doc/blob/master/reference/gyro.md
+        self.gyro = None
+        self.camera = None
+        self.range_front = None
+        self.range_left = None
+        self.range_back = None
+        self.range_right = None
+                
+        # Get keyboard, not currently in use
+        self.keyboard = None
+            
+            
+        self.steps_per_episode = 200  # Max number of steps per episode
+        self.episode_score = 0  # Score accumulated during an episode
+        self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
+        self.altitude = 0 # alt normalized 
+        self.x_global = 0.0
+        self.y_global = 0.0
+        self.first_time = True
+        self.dt = 1.0
+        self.roll = 0
+        self.pitch = 0
+        self.yaw = 0
+        self.yaw_rate = 0
+        self.v_x = 0
+        self.v_y = 0
+        self.alt = 0 # in meters         
+        self.past_time = 0
+        self.the_drone_took_off = False
+        self.height_desired = HEIGHT_INITIAL
+        self.timestamp_take_off = 0
         
         # Initialize motors
-        self.motors = [None for _ in range(4)]
-        self.setup_motors()      
-          
+        self.motors = None
+        self.initialization() 
+        
+        print("DEBUG init DroneRobotSupervisor")
+        
+    def initialization(self):
+        """ Internal function """
+        
+        
+        timestep = int(self.getBasicTimeStep())
+        self.timestep = timestep
+             
+        # Crazyflie velocity PID controller
+        self.PID_crazyflie = pid_velocity_fixed_height_controller()
+         
         # Initialize Sensors
         # https://github.com/cyberbotics/webots-doc/blob/master/reference/inertialunit.md
         self.imu = self.getDevice("inertial_unit")
@@ -97,13 +146,26 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         self.yaw_rate = 0
         self.v_x = 0
         self.v_y = 0
-        self.alt = 0 # in meters 
+        self.alt = 0 # in meters         
+        self.past_time = 0
         self.the_drone_took_off = False
-        print("DEBUG init DroneRobotSupervisor")
+        self.height_desired = HEIGHT_INITIAL
+        self.timestamp_take_off = 0
+        # Initialize motors
+        self.motors = [None for _ in range(4)]
+        self.setup_motors() 
+        print("DEBUG initialization")
         
-        
-
     
+    def reset(self):
+        print("RESET")
+        # Reset the simulation
+        self.simulationResetPhysics()
+        self.simulationReset()
+        super().step(self.timestep)
+        
+        self.initialization()
+        
     def setup_motors(self):
         """
         This method initializes the four wheels, storing the references inside a list and setting the starting
@@ -117,12 +179,8 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         
         for i in range(len(self.motors)):
             self.motors[i].setPosition(float('inf'))
-            if i % 2 == 0 :
-                self.motors[i].setVelocity(1.0) # motor 1 and 3, index 0 and 2
-            else:
-                self.motors[i].setVelocity(-1.0) # motor 2 and 4
-        
-
+            
+        self.setup_motors_velocity(np.array([1.0,1.0,1.0,1.0]))
             
     def get_observations(self):
     
@@ -276,56 +334,79 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
-        height_desired = FLYING_ATTITUDE # fixed for this problem
+        #height_desired = FLYING_ATTITUDE # fixed for this problem
         
         print("DEBUG apply_action "+str(action)) 
         
         if self.the_drone_took_off:
-            #action = int(action[0])
+            
             action = int(action)
-            if action == 0:
+            
+            if action==0:
                 forward_desired = 0.5 # go forward
-            
-            if action == 1:
-                forward_desired = -0.5 # go backwards
-                
-            if action == 2: # move left
+            elif action==1:
+                forward_desired = -0.5 # go backwards            
+            elif action==2: # move left
                 sideways_desired = 0.5
-                
-            if action == 3:
+            elif action==3:
                 sideways_desired = -0.5 # move right
-            
-            if action == 4:
+            elif action==4:
                 yaw_desired = 1 # turn left
-                
-            if action == 5:
-                yaw_desired = -1  # turn right      
-                
-          
+            elif action==5:
+                yaw_desired = -1  # turn right   
+            elif action==6: # keep on the same place
+                forward_desired = 0
+                sideways_desired = 0
+                yaw_desired = 0
+            #elif action == -22: # drone takes off
+            #   print("modo despegue")
+            else: 
+                print("Not a valid action")               
+
+            
         else:         
             
-            if self.alt >= 1 and self.getTime()>4:
-                print(" self.alt " + str(self.alt))
-                self.the_drone_took_off = True
-                print("DESPEGOOOO " ) 
+            # MODO DESPEGUE 
+                    
+            if self.height_desired <= MAX_HEIGHT:
+                            
+                if self.alt >= self.height_desired:
+            
+                    self.height_desired += HEIGHT_INCREASE                
+            
+            else:
+            
+                if self.alt >= MAX_HEIGHT :
+                
+                    if self.timestamp_take_off ==0:
+                        self.timestamp_take_off = self.getTime()
+                    
+                    if self.getTime() - self.timestamp_take_off > 5:
+                        
+                        self.the_drone_took_off = True
+                        print("DESPEGOOOO " ) 
+                    
+            
+            
                 
         print("====== PID input =======\n")
         print("dt   " + str(self.dt) )
         print("forward_desired   " + str(forward_desired) )
         print("sideways_desired   " + str(sideways_desired) )
         print("yaw_desired   " + str(yaw_desired) )
-        print("height_desired   " + str(height_desired) )        
+        print("height_desired   " + str(self.height_desired) )        
         print("roll  " + str(self.roll) )
         print("Pitch  " + str(self.pitch) )   
         print("Yaw rate: " + str(self.yaw_rate) )              
         print("altitude: " + str(self.alt) )
         print("v_x: " + str(self.v_x) )
         print("v_y: " + str(self.v_y) )
+        print("SIMULATION TIME: " + str(self.getTime()) )
         print("==================================\n")
         
-        # PID velocity controller with fixed height
+                # PID velocity controller with fixed height
         motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
-                                        yaw_desired, height_desired,
+                                        yaw_desired, self.height_desired ,
                                         self.roll, self.pitch, self.yaw_rate,
                                         self.alt, self.v_x, self.v_y)
         self.setup_motors_velocity(motor_power)
@@ -350,6 +431,6 @@ class DroneRobotSupervisor(RobotSupervisorEnv):
         print(" m2 " + str(motor_power[1]) )  # 2
         print(" m3 " + str(-motor_power[2]) ) # 3       
         print(" m4 " + str(motor_power[3]) )  # 4
-       
-                        
+
+
                 
