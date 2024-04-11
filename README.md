@@ -1,3 +1,3 @@
 # drone-deep-rl
 
-Experimental & unstable code.
+Personal repository with experimental & unstable code.
