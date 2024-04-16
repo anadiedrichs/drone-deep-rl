@@ -21,7 +21,7 @@ from utilities import *
 from pid_controller import pid_velocity_fixed_height_controller
 
 
-MAX_HEIGHT = 1 # in meters
+MAX_HEIGHT = 0.7 # in meters
 HEIGHT_INCREASE = 0.05 # 5 cm
 HEIGHT_INITIAL = 0.3 # 5 cm
 
@@ -302,56 +302,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         
         return arr
 
-    def get_reward(self, action=None):
-        
-        r = 0 
-        
-        # demasiado cerca de la pared 
-        #if self.range_front_value < 0.1 or 
-        #self.range_back_value  < 0.1 or
-        #self.range_right_value  < 0.1 or
-        #self.range_left_value  < 0.1 :
-        #    r += -1
-        
-        # muy cerca de la pared 
-        if self.dist_front < 200 or self.dist_back  < 200 or self.dist_right < 200 or self.dist_left  < 200 :
-            r += -10
-            print("DEBUG Reward se está acercando mucho ")
-        
-
-        # muy lejos de la pared
-        if self.dist_front > 200 and self.dist_back  > 200 and self.dist_right > 200 and self.dist_left  > 200 :
-            r += -10
-            print("DEBUG Reward muy lejos de la pared ")
-        else:
-            r += 10
-        # check the drone's altitude     
-        if self.alt < 1 or self.alt > 1.5 : # in meters 
-            r += - 10
-            print("DEBUG Reward altura inadecuada " + str(self.alt))
-        else: 
-            r += 10
-        
-        
-        # Reward for every step the episode hasn't ended
-        print("DEBUG Reward value " + str(r))
     
-        return r
-
-    def is_done(self):
-        
-        if self.episode_score > 195.0:
-            return True
-        
-        return False
-            # Done
-        #done = bool(
-        #    self.state[0] < -self.x_threshold or
-        #    self.state[0] > self.x_threshold or
-        #    self.state[2] < -self.theta_threshold_radians or
-        #    self.state[2] > self.theta_threshold_radians
-        #)
-            
     def take_off(self):
         """
         Para despegar el drone al inicio
@@ -392,7 +343,11 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
                     
                     self.the_drone_took_off = True
                     print("DESPEGOOOO " ) 
-                
+                motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
+                                0, self.height_desired ,
+                                self.roll, self.pitch, self.yaw_rate,
+                                self.alt, self.v_x, self.v_y)                                                
+                self.setup_motors_velocity(motor_power)
                 super().step(self.timestep)
                 
             print("====== PID input =======\n")
@@ -474,7 +429,64 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
 
         # observations / state, reward ,done , {}
         return obs, reward, self.is_done(), {}
+        
+        
+    def get_reward(self, action=None):
+        
+        """
+        El objetivo es que el drone aprenda a acercarse 
+        a una de las paredes
+        
+        """
+        r = 0 
+        
 
+        # muy cerca de la pared, 2000 mm es el máximo, 200 mm = 20 cm  
+        #if self.dist_front <= 200 or self.dist_back  <= 200 or self.dist_right <= 200 or self.dist_left  <= 200 :
+        #    r = 1
+        #    print("DEBUG Reward se está acercando ")
+        #else:
+        #    r= -1
+            
+
+        # penalizo por estar lejos de la pared
+        if self.dist_front > 500 and self.dist_back  > 500 and self.dist_right > 500 and self.dist_left  > 500 :
+            r += -1
+            print("DEBUG Reward muy lejos de la pared ")
+        else:
+            r += 1
+
+        
+        
+        # Reward for every step the episode hasn't ended
+        print("DEBUG Reward value " + str(r))
+    
+        return r
+
+    def is_done(self):
+        
+        if self.episode_score > 195.0:
+            return True
+        
+        # Si ya está el cuadricóptero al menos a 20 cm de la pared
+        # doy x terminado el trabajo 
+        # 2000 mm es el máximo, 200 mm = 20 cm  
+        if bool(self.dist_front <= 200 or
+           self.dist_back  <= 200 or 
+           self.dist_right <= 200 or 
+           self.dist_left  <= 200) :
+            return True
+              
+        
+        return False
+            # Done
+        #done = bool(
+        #    self.state[0] < -self.x_threshold or
+        #    self.state[0] > self.x_threshold or
+        #    self.state[2] < -self.theta_threshold_radians or
+        #    self.state[2] > self.theta_threshold_radians
+        #)
+            
 
 def main():
     # Initialize the environment
@@ -483,12 +495,15 @@ def main():
     
     obs = env.reset()
     # Replay
-    print('Drone took off, press `Y` to continue...')
-    env.wait_keyboard()
+    # print('Drone took off, press `Y` to continue...')
+    # env.wait_keyboard()
     
     # Train
     model = PPO('MlpPolicy', env, n_steps=2048, verbose=1)
     model.learn(total_timesteps=1e5)
+    
+    # Save the model
+    model.save("ppo_model")
 
     # Replay
     print('Training is finished, press `Y` for replay...')
@@ -496,8 +511,9 @@ def main():
 
     obs = env.reset()
     
-    print('Drone took off, press `Y` to continue...')
-    env.wait_keyboard()
+    # lo siguiente no ha llegado a ser ejecutado 
+    #print('Drone took off, press `Y` to continue...')
+    #env.wait_keyboard()
     
     for _ in range(100000):
         action, _states = model.predict(obs)
