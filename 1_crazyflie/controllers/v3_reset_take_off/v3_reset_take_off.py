@@ -23,8 +23,8 @@ from pid_controller import pid_velocity_fixed_height_controller
 
 MAX_HEIGHT = 0.7 # in meters
 HEIGHT_INCREASE = 0.05 # 5 cm
-HEIGHT_INITIAL = 0.3 # 5 cm
-
+HEIGHT_INITIAL = 0.50 # 20 cm
+WAITING_TIME = 10 # in seconds 
 
 try:
     import gym #nasium as gym
@@ -98,7 +98,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.the_drone_took_off = False
         self.height_desired = HEIGHT_INITIAL
         self.timestamp_take_off = 0
-        
+        self.timer1 = 0 
         # Initialize motors
         self.motors = None
         self.initialization() 
@@ -145,7 +145,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.x_global = 0.0
         self.y_global = 0.0
         self.first_time = True
-        self.dt = 1.0
+        self.dt = self.timestep
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
@@ -157,6 +157,8 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.the_drone_took_off = False
         self.height_desired = HEIGHT_INITIAL
         self.timestamp_take_off = 0
+        self.timer1 = 0
+        
         # Initialize motors
         self.motors = [None for _ in range(4)]
         self.setup_motors() 
@@ -274,24 +276,8 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         range_back_value = normalize_to_range(self.dist_back,2, 2000, -1.0, 1.0,clip=True)
         range_right_value = normalize_to_range(self.dist_right,2, 2000, -1.0, 1.0,clip=True)
         range_left_value = normalize_to_range(self.dist_left,2, 2000, -1.0, 1.0,clip=True)
-    
-       
-        print("====== SENSORS observations =======\n")
-        print("dt   " + str(self.dt) )
-        print("Roll   " + str(self.roll) )
-        print("Pitch  " + str(self.pitch) )
-        print("Yaw    " + str(self.yaw) )        
-        print("Yaw rate: " + str(self.yaw_rate) )        
-        print("x_global: " + str(self.x_global) )
-        print("v_x_global: " + str(self.v_x) )
-        print("y_global: " + str(self.y_global) )
-        print("v_y_global: " + str(self.v_y) )        
-        print("altitude: " + str(self.alt) )
-        print("range_front: " + str(self.dist_front) )
-        print("range_right: " + str(self.dist_right) )
-        print("range_left: " + str(self.dist_left) )
-        print("range_back: " + str(self.dist_back) )
-        print("==================================\n")
+        
+        self.print_debug_status()
         
     
         arr = [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,range_front_value, range_back_value ,range_right_value, range_left_value ]
@@ -302,71 +288,87 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         
         return arr
 
+    def print_debug_status(self):
+    
+        print("====== PID input =======\n")
+        print("dt   " + str(self.dt) )
+        print("height_desired   " + str(self.height_desired) )        
+        print("roll  " + str(self.roll) )
+        print("Pitch  " + str(self.pitch) )   
+        print("Yaw rate: " + str(self.yaw_rate) )              
+        print("altitude: " + str(self.alt) )
+        print("v_x: " + str(self.v_x) )
+        print("v_y: " + str(self.v_y) )        
+        print("==================================\n")
+        print("SIMULATION TIME: " + str(self.getTime()) )
+        print("====== SENSORS observations =======\n")
+        print("Yaw    " + str(self.yaw) )        
+        print("Yaw rate: " + str(self.yaw_rate) )        
+        print("x_global: " + str(self.x_global) )
+        print("v_x_global: " + str(self.v_x) )
+        print("y_global: " + str(self.y_global) )
+        print("v_y_global: " + str(self.v_y) )      
+        print("range_front: " + str(self.dist_front) )
+        print("range_right: " + str(self.dist_right) )
+        print("range_left: " + str(self.dist_left) )
+        print("range_back: " + str(self.dist_back) )
+        print("==================================\n")
     
     def take_off(self):
         """
         Para despegar el drone al inicio
         """
-
-    
-        while self.the_drone_took_off == False:       
+      
+        while self.the_drone_took_off == False:
+            
+            # update observations 
+            obs = self.get_observations()
             
             if self.alt < MAX_HEIGHT:
             
-                if self.alt < self.height_desired:
-                
-                    # PID velocity controller with fixed height
-                    motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
-                                                    0, self.height_desired ,
-                                                    self.roll, self.pitch, self.yaw_rate,
-                                                    self.alt, self.v_x, self.v_y)                                                
-                    self.setup_motors_velocity(motor_power)
-                              
-                    super().step(self.timestep)
-                    
-                    self.past_time = self.getTime()
-                    self.past_x_global = self.x_global
-                    self.past_y_global = self.y_global
-                    
-                else: # incremento altura deseada
-                            
+                if self.alt > self.height_desired:            
+                 # incremento altura deseada                            
                     self.height_desired = self.height_desired + HEIGHT_INCREASE
+                    self.timestamp_take_off =0
+                #else: # doy un tiempo a que se estabilice
                 
-                # update observations 
-                obs = self.get_observations()  
+                    #if self.timer1 ==0:
+                    #   self.timestamp_take_off = self.getTime()
+                            
+                    #if self.getTime() - self.timer1 > WAITING_TIME:                        
+                    #    self.timer1 = 0                 
             else:
             
                 if self.timestamp_take_off ==0:
-                            self.timestamp_take_off = self.getTime()
+                   self.timestamp_take_off = self.getTime()
                         
-                if self.getTime() - self.timestamp_take_off > 5:
-                    
+                if self.getTime() - self.timestamp_take_off > WAITING_TIME:
+                    self.timestamp_take_off =0
                     self.the_drone_took_off = True
+                    self.height_desired = self.alt
                     print("DESPEGOOOO " ) 
-                motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
-                                0, self.height_desired ,
-                                self.roll, self.pitch, self.yaw_rate,
-                                self.alt, self.v_x, self.v_y)                                                
-                self.setup_motors_velocity(motor_power)
-                super().step(self.timestep)
-                
-            print("====== PID input =======\n")
-            print("dt   " + str(self.dt) )
-            print("height_desired   " + str(self.height_desired) )        
-            print("roll  " + str(self.roll) )
-            print("Pitch  " + str(self.pitch) )   
-            print("Yaw rate: " + str(self.yaw_rate) )              
-            print("altitude: " + str(self.alt) )
-            print("v_x: " + str(self.v_x) )
-            print("v_y: " + str(self.v_y) )
-            print("SIMULATION TIME: " + str(self.getTime()) )
-            print("==================================\n")
+
+            motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
+                            0, self.height_desired ,
+                            self.roll, self.pitch, self.yaw_rate,
+                            self.alt, self.v_x, self.v_y)                                                
+            self.setup_motors_velocity(motor_power)
+            super().step(self.timestep)
+                        
+            self.print_debug_status()
+            
+            self.past_time = self.getTime()
+            self.past_x_global = self.x_global
+            self.past_y_global = self.y_global
         
+    
     def step(self, action):
         
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
+        # Observation
+        obs = self.get_observations()
         
         print("DEBUG apply_action "+str(action)) 
         action = int(action)
@@ -397,35 +399,25 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
                                         yaw_desired, self.height_desired ,
                                         self.roll, self.pitch, self.yaw_rate,
                                         self.alt, self.v_x, self.v_y)
-        self.setup_motors_velocity(motor_power)
+        self.setup_motors_velocity(motor_power)       
+            
+        super().step(self.timestep)
+        print("====== PID input ACTION =======\n")
+        print("height_desired   " + str(self.height_desired) )        
+        print("forward_desired   " + str(forward_desired) )
+        print("sideways_desired   " + str(sideways_desired) )
+        print("yaw_desired   " + str(yaw_desired) )   
+        print("==================================\n")
+        self.print_debug_status()
+        # Reward
+        reward = self.get_reward()
         
         
+        # update times
         self.past_time = self.getTime()
         self.past_x_global = self.x_global
         self.past_y_global = self.y_global
             
-            
-        super().step(self.timestep)
-        print("====== PID input ACTION =======\n")
-        print("dt   " + str(self.dt) )
-        print("height_desired   " + str(self.height_desired) )        
-        print("forward_desired   " + str(forward_desired) )
-        print("sideways_desired   " + str(sideways_desired) )
-        print("yaw_desired   " + str(yaw_desired) )
-        
-        print("roll  " + str(self.roll) )
-        print("Pitch  " + str(self.pitch) )   
-        print("Yaw rate: " + str(self.yaw_rate) )              
-        print("altitude: " + str(self.alt) )
-        print("v_x: " + str(self.v_x) )
-        print("v_y: " + str(self.v_y) )
-        print("SIMULATION TIME: " + str(self.getTime()) )
-        print("==================================\n")
-        # Observation
-        obs = self.get_observations()
-        
-        # Reward
-        reward = self.get_reward()
 
         # observations / state, reward ,done , {}
         return obs, reward, self.is_done(), {}
@@ -479,13 +471,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
               
         
         return False
-            # Done
-        #done = bool(
-        #    self.state[0] < -self.x_threshold or
-        #    self.state[0] > self.x_threshold or
-        #    self.state[2] < -self.theta_threshold_radians or
-        #    self.state[2] > self.theta_threshold_radians
-        #)
+            
             
 
 def main():
