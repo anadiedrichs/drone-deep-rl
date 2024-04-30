@@ -381,17 +381,17 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         action = int(action)
         
         if action==0:
-            forward_desired = 0.5 # go forward
+            forward_desired = 0.005 # go forward
         elif action==1:
-            forward_desired = -0.5 # go backwards            
+            forward_desired = -0.005 # go backwards            
         elif action==2: # move left
-            sideways_desired = 0.5
+            sideways_desired = 0.005
         elif action==3:
-            sideways_desired = -0.5 # move right
+            sideways_desired = -0.005 # move right
         elif action==4:
-            yaw_desired = 1 # turn left
+            yaw_desired = 0.01 # turn left
         elif action==5:
-            yaw_desired = -1  # turn right   
+            yaw_desired = -0.01  # turn right   
         elif action==6: # keep on the same place
             forward_desired = 0
             sideways_desired = 0
