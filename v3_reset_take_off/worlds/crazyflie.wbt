@@ -1,9 +1,9 @@
 #VRML_SIM R2023b utf8
 
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/bitcraze/crazyflie/protos/Crazyflie.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/Floor.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/bitcraze/crazyflie/protos/Crazyflie.proto"
 
 WorldInfo {
   info [
@@ -13,15 +13,18 @@ WorldInfo {
   title "Crazyflie"
 }
 Viewpoint {
-  orientation -0.10311089632172073 0.641740519713268 0.7599587149430397 0.6949228976889259
-  position -1.4079821323259103 -0.8990534316278701 0.7779322600533379
-  follow "Crazyflie"
+  orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
+  position 0.10475281443541748 -0.15648564658724742 3.555184257456773
 }
 TexturedBackground {
 }
 TexturedBackgroundLight {
 }
-Floor {
+RectangleArena {
+  translation 0.0595896 -0.157329 -1.33227e-15
+  floorSize 3 3
+  wallThickness 0.1
+  wallHeight 2
 }
 Crazyflie {
   controller "v3_reset_take_off"
