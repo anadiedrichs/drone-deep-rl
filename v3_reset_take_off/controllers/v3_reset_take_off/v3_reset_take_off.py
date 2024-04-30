@@ -199,12 +199,18 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
     def wait_keyboard(self):
         while self.keyboard.getKey() != ord('Y'):
             super().step(self.timestep)
+            
     def get_default_observation(self):
-        # This method just returns a zero vector as a default observation
+        """
+         This method just returns a zero vector as a default observation
+            
+        """
         return [0.0 for _ in range(self.observation_space.shape[0])]
 
     def reset(self):
-        # Reset the simulation
+        """
+        Reset the simulation    
+        """
         self.simulationResetPhysics()
         self.simulationReset()
         super().step(self.timestep)
@@ -221,7 +227,9 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         return self.get_default_observation()
         
     def get_observations(self):
-    
+        """
+        Read sensors values   
+        """
         
         if self.first_time:
             self.past_x_global = self.gps.getValues()[0]
@@ -288,7 +296,10 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         
         return arr
 
-    def print_debug_status(self):
+    def print_debug_status(self):    
+        """
+        Print sensors values   
+        """
     
         print("====== PID input =======\n")
         print("dt   " + str(self.dt) )
@@ -315,8 +326,9 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         print("==================================\n")
     
     def take_off(self):
+    
         """
-        Para despegar el drone al inicio
+        This function must be called at the beginning to take off the drone
         """
       
         while self.the_drone_took_off == False:
@@ -328,14 +340,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
                  # incremento altura deseada                            
                     self.height_desired = self.height_desired + HEIGHT_INCREASE
                     # reset timer pues aun no se estabiliza
-                    self.timestamp_take_off =0
-                #else: # doy un tiempo a que se estabilice
-                
-                    #if self.timer1 ==0:
-                    #   self.timestamp_take_off = self.getTime()
-                            
-                    #if self.getTime() - self.timer1 > WAITING_TIME:                        
-                    #    self.timer1 = 0                 
+                    self.timestamp_take_off =0     
             else:
                 # inicializo timer de espera post despegue
                 if self.timestamp_take_off == 0:
@@ -345,7 +350,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
                     self.timestamp_take_off =0
                     self.the_drone_took_off = True
                     self.height_desired = self.alt
-                    print("DESPEGOOOO " ) 
+                    print("CRAZYFLIE TOOK OFF ! " ) 
 
             motor_power = self.PID_crazyflie.pid(self.dt, 0, 0,
                             0, self.height_desired ,
@@ -371,8 +376,6 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
-        # Observation
-        obs = self.get_observations()
         
         print("DEBUG apply_action "+str(action)) 
         action = int(action)
@@ -413,6 +416,9 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         print("yaw_desired   " + str(yaw_desired) )   
         print("==================================\n")
         self.print_debug_status()
+        # get the environment observation (sensor readings)
+        obs = self.get_observations()
+        
         # Reward
         reward = self.get_reward()
         
@@ -430,20 +436,15 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
     def get_reward(self, action=None):
         
         """
+        The drone must learn to close to the walls
+        
         El objetivo es que el drone aprenda a acercarse 
         a una de las paredes
         
         """
         r = 0 
         
-
-        # muy cerca de la pared, 2000 mm es el máximo, 200 mm = 20 cm  
-        #if self.dist_front <= 200 or self.dist_back  <= 200 or self.dist_right <= 200 or self.dist_left  <= 200 :
-        #    r = 1
-        #    print("DEBUG Reward se está acercando ")
-        #else:
-        #    r= -1
-            
+       
 
         # penalizo por estar lejos de la pared
         if self.dist_front > 500 and self.dist_back  > 500 and self.dist_right > 500 and self.dist_left  > 500 :
@@ -460,7 +461,9 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         return r
 
     def is_done(self):
-        
+        """
+        Return True when a final state is reached.
+        """
         if self.episode_score > 195.0:
             return True
         
@@ -473,7 +476,11 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
            self.dist_left  <= 200) :
             return True
               
-        
+        # si el drone perdió estabilidad y está en el piso}
+        if self.alt < HEIGHT_INITIAL:
+            return True
+            
+            
         return False
             
             
