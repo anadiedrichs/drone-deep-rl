@@ -464,16 +464,18 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
               (self.dist_back <= 200 and self.dist_left <= 200) or \
               (self.dist_back <= 200 and self.dist_right <= 200)
         
-        reward = alpha * (dist_min - dist_average) + beta * in_corner
-        
-        #reward = -(alpha * dist_min ) + beta * in_corner
+        #reward = alpha * (dist_min - dist_average) + beta * in_corner
+        # Dependiente del escenario
+        #min_reward = alpha * (1000 - 1000) + beta * 0 # REVISAR
+        #max_reward = alpha * (100 - 1000 ) + beta * 1 # REVISAR
+        reward =  in_corner * 1000 - dist_min
         
         
         #TODO REVISAR
         # Calcular valores mínimo y máximo de recompensa
         # Dependiente del escenario
-        min_reward = alpha * (1000 - 1000) + beta * 0 # REVISAR
-        max_reward = alpha * (100 - 1000 ) + beta * 1 # REVISAR
+        min_reward = -1000 # REVISAR
+        max_reward = 1000 # REVISAR
 
         # Normalizar la recompensa
         normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
@@ -481,9 +483,8 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
        
        
         # Reward for every step the episode hasn't ended
-        print("DEBUG Reward value " + str(normalized_reward))
-        print("DEBUG Reward MAX " + str(max_reward))
-        print("DEBUG Reward MIN " + str(min_reward))
+        print("DEBUG Reward value " + str(reward))
+        print("DEBUG normalized reward " + str(normalized_reward))
         #print("DEBUG normalized reward value " + str(r))
         return normalized_reward
 
@@ -522,7 +523,8 @@ def main():
 
     # Train
     # PPO Proximal Policy Optimization (PPO)
-    model = PPO('MlpPolicy', env, n_steps=2048, verbose=1), tensorboard_log=tmp_path)
+    model = PPO('MlpPolicy', env, n_steps=2048,
+                 verbose=1, tensorboard_log=tmp_path, seed = 7)
     # Set new logger
     model.set_logger(new_logger)
     model.learn(total_timesteps=1e5)
