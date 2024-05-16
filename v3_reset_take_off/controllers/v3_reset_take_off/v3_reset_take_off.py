@@ -522,7 +522,7 @@ def main():
 
     # Train
     # PPO Proximal Policy Optimization (PPO)
-    model = PPO('MlpPolicy', env, n_steps=2048, verbose=1)
+    model = PPO('MlpPolicy', env, n_steps=2048, verbose=1), tensorboard_log=tmp_path)
     # Set new logger
     model.set_logger(new_logger)
     model.learn(total_timesteps=1e5)
