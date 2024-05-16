@@ -21,10 +21,12 @@ from utilities import *
 from pid_controller import pid_velocity_fixed_height_controller
 
 
-MAX_HEIGHT = 1 # in meters
+MAX_HEIGHT = 0.7 # in meters
 HEIGHT_INCREASE = 0.05 # 5 cm
 HEIGHT_INITIAL = 0.30 # 20 cm
 WAITING_TIME = 5 # in seconds 
+# 2000 mm es el máximo, 200 mm = 20 cm  
+DIST_MIN = 1000 # in mm (200 + 200 + 1800 + 1800 )/4
 
 try:
     import gym #nasium as gym
@@ -37,6 +39,8 @@ except ImportError:
         'Run: "pip3 install numpy gym==0.21 stable_baselines3"'
     )
 
+from stable_baselines3.common.logger import configure
+from stable_baselines3.common.evaluation import evaluate_policy
 
 class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
 
@@ -292,7 +296,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         
         arr = np.array(arr)
         
-        print("DEBUG get_observations "+str(arr))
+        #print("DEBUG get_observations "+str(arr))
         
         return arr
 
@@ -302,17 +306,17 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         """
     
         print("====== PID input =======\n")
-        print("dt   " + str(self.dt) )
+        print("dt   " + str(self.dt) )                      
+        print("altitude: " + str(self.alt) )
         print("height_desired   " + str(self.height_desired) )        
         print("roll  " + str(self.roll) )
         print("Pitch  " + str(self.pitch) )   
-        print("Yaw rate: " + str(self.yaw_rate) )              
-        print("altitude: " + str(self.alt) )
+        print("Yaw rate: " + str(self.yaw_rate) )
         print("v_x: " + str(self.v_x) )
         print("v_y: " + str(self.v_y) )        
-        print("==================================\n")
-        print("SIMULATION TIME: " + str(self.getTime()) )
-        print("====== SENSORS observations =======\n")
+        #print("==================================\n")
+        #print("SIMULATION TIME: " + str(self.getTime()) )
+        #print("====== SENSORS observations =======\n")
         print("Yaw    " + str(self.yaw) )        
         print("Yaw rate: " + str(self.yaw_rate) )        
         print("x_global: " + str(self.x_global) )
@@ -409,12 +413,12 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.setup_motors_velocity(motor_power)       
             
         super().step(self.timestep)
-        print("====== PID input ACTION =======\n")
-        print("height_desired   " + str(self.height_desired) )        
-        print("forward_desired   " + str(forward_desired) )
-        print("sideways_desired   " + str(sideways_desired) )
-        print("yaw_desired   " + str(yaw_desired) )   
-        print("==================================\n")
+        #print("====== PID input ACTION =======\n")
+        #print("height_desired   " + str(self.height_desired) )        
+        #print("forward_desired   " + str(forward_desired) )
+        #print("sideways_desired   " + str(sideways_desired) )
+        #print("yaw_desired   " + str(yaw_desired) )   
+        #print("==================================\n")
         self.print_debug_status()
         # get the environment observation (sensor readings)
         obs = self.get_observations()
@@ -442,43 +446,64 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         a una de las paredes
         
         """
-        r = 0 
+        reward = 0 
+        alpha = 0.6
+        beta = 0.4
         
-       
+        # Calculate the minimum distance to the walls
+        dist_min = min(self.dist_front, self.dist_back,self.dist_right, self.dist_left)
+        dist_average = (self.dist_front + self.dist_back + self.dist_right + self.dist_left) / 4
+        
+        print("DEBUG  dist_average" + str(dist_average))
+        print("DEBUG  dist_min" + str(dist_min))
+        
+        
+        # Determinar si el dron está en una esquina
+        in_corner = (self.dist_front <= 200 and self.dist_left <= 200) or \
+              (self.dist_front <= 200 and self.dist_right <= 200) or \
+              (self.dist_back <= 200 and self.dist_left <= 200) or \
+              (self.dist_back <= 200 and self.dist_right <= 200)
+        
+        reward = alpha * (dist_min - dist_average) + beta * in_corner
+        
+        #reward = -(alpha * dist_min ) + beta * in_corner
+        
+        
+        #TODO REVISAR
+        # Calcular valores mínimo y máximo de recompensa
+        # Dependiente del escenario
+        min_reward = alpha * (1000 - 1000) + beta * 0 # REVISAR
+        max_reward = alpha * (100 - 1000 ) + beta * 1 # REVISAR
 
-        # penalizo por estar lejos de la pared
-        if self.dist_front > 500 and self.dist_back  > 500 and self.dist_right > 500 and self.dist_left  > 500 :
-            r += -1
-            print("DEBUG Reward muy lejos de la pared ")
-        else:
-            r += 1
-
-        
-        
-        # Reward for every step the episode hasn't ended
-        print("DEBUG Reward value " + str(r))
+        # Normalizar la recompensa
+        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
     
-        return r
+       
+       
+        # Reward for every step the episode hasn't ended
+        print("DEBUG Reward value " + str(normalized_reward))
+        print("DEBUG Reward MAX " + str(max_reward))
+        print("DEBUG Reward MIN " + str(min_reward))
+        #print("DEBUG normalized reward value " + str(r))
+        return normalized_reward
 
     def is_done(self):
         """
         Return True when a final state is reached.
         """
-        if self.episode_score > 195.0:
-            return True
         
-        # Si ya está el cuadricóptero al menos a 20 cm de la pared
-        # doy x terminado el trabajo 
-        # 2000 mm es el máximo, 200 mm = 20 cm  
-        if bool(self.dist_front <= 200 or
-           self.dist_back  <= 200 or 
-           self.dist_right <= 200 or 
-           self.dist_left  <= 200) :
+        # Si ya está el cuadricóptero al menos a 10 cm de la pared
+        # doy por terminado el trabajo 
+        # 2000 mm es el máximo, 100 mm = 10 cm  
+        if bool((self.dist_front <= 100 and self.dist_left <= 100) or \
+              (self.dist_front <= 100 and self.dist_right <= 100) or \
+              (self.dist_back <= 100 and self.dist_left <= 100) or \
+              (self.dist_back <= 100 and self.dist_right <= 100)) :
             return True
               
         # si el drone perdió estabilidad y está en el piso}
-        if self.alt < HEIGHT_INITIAL:
-            return True
+        #if self.alt < HEIGHT_INITIAL:
+        #    return True
             
             
         return False
@@ -489,36 +514,43 @@ def main():
     # Initialize the environment
     env = DroneOpenAIGymEnvironment()
     #check_env(env)
-    
-    obs = env.reset()
-    # Replay
-    # print('Drone took off, press `Y` to continue...')
-    # env.wait_keyboard()
-    
+
+    tmp_path = "./sb3_logs/"
+    # set up logger
+    # https://stable-baselines3.readthedocs.io/en/master/common/logger.html#logger
+    new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
+
     # Train
+    # PPO Proximal Policy Optimization (PPO)
     model = PPO('MlpPolicy', env, n_steps=2048, verbose=1)
+    # Set new logger
+    model.set_logger(new_logger)
     model.learn(total_timesteps=1e5)
     
     # Save the model
     model.save("ppo_model")
 
     # Replay
-    print('Training is finished, press `Y` for replay...')
-    env.wait_keyboard()
+    #print('Training is finished, press `Y` for replay...')
+    #env.wait_keyboard()
 
     obs = env.reset()
     
-    # lo siguiente no ha llegado a ser ejecutado 
-    #print('Drone took off, press `Y` to continue...')
-    #env.wait_keyboard()
     
-    for _ in range(100000):
-        action, _states = model.predict(obs)
-        obs, reward, done, info = env.step(action)
-        print(obs, reward, done, info)
-        if done:
-            obs = env.reset()
+#    for i in range(100000):
+#        print("i : " + str(i) )
+#        action, _states = model.predict(obs)
+#        obs, reward, done, info = env.step(action)
+#        print(obs, reward, done, info)
+#        if done:
+            #print("DONE is TRUE ")
+#            obs = env.reset()
 
 
+    # Evaluate the trained agent
+    mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100000)
+    
+    print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
+    
 if __name__ == '__main__':
     main()
