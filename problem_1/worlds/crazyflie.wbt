@@ -17,6 +17,7 @@ Viewpoint {
   position 0.12678169639214895 -0.15661810098178452 6.3638226903083694
 }
 TexturedBackground {
+  luminosity 8
 }
 TexturedBackgroundLight {
   luminosity 2
@@ -33,6 +34,6 @@ DirectionalLight {
   castShadows TRUE
 }
 Crazyflie {
-  controller "v3_reset_take_off"
+  controller "<extern>"
   supervisor TRUE
 }
