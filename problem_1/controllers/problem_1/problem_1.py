@@ -457,18 +457,30 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         # Dependiente del escenario
         #min_reward = alpha * (1000 - 1000) + beta * 0 # REVISAR
         #max_reward = alpha * (100 - 1000 ) + beta * 1 # REVISAR
-        reward = in_corner * 1010 - dist_min
+
+
+        # Reward for every step the episode hasn't ended
+        if (dist_min <= 100):
+            # the drone is penalized for getting too close to a wall
+            reward = 0
+        else:
+            if in_corner:
+                #reward to reach the goal
+                reward = 10
+            else:
+                # keep going or exploring reward
+                reward = 1
+
 
         #TODO REVISAR
         # Calcular valores mínimo y máximo de recompensa
         # Dependiente del escenario
-        min_reward = -1000  # REVISAR
-        max_reward = 1000  # REVISAR
+        min_reward = 0  # REVISAR
+        max_reward = 10  # REVISAR
 
-        # Normalizar la recompensa
-        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
+        # Normalize the reward
+        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1,clip=True)
 
-        # Reward for every step the episode hasn't ended
         print("DEBUG Reward value " + str(reward))
         print("DEBUG normalized reward " + str(normalized_reward))
         #print("DEBUG normalized reward value " + str(r))
@@ -476,16 +488,17 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
 
     def is_done(self):
         """
-        Return True when a final state is reached.
+        Return True when a final state is reached:
+        when the quadcopter is at least at 20 cm from a corner
         """
 
-        # Si ya está el cuadricóptero al menos a 10 cm de la pared
-        # doy por terminado el trabajo 
+        #
+
         # 2000 mm es el máximo, 100 mm = 10 cm  
-        if bool((self.dist_front <= 100 and self.dist_left <= 100) or \
-                (self.dist_front <= 100 and self.dist_right <= 100) or \
-                (self.dist_back <= 100 and self.dist_left <= 100) or \
-                (self.dist_back <= 100 and self.dist_right <= 100)):
+        if bool((self.dist_front <= 200 and self.dist_left <= 200) or \
+                (self.dist_front <= 200 and self.dist_right <= 200) or \
+                (self.dist_back <= 200 and self.dist_left <= 200) or \
+                (self.dist_back <= 200 and self.dist_right <= 200)):
             return True
 
         # si el drone perdió estabilidad y está en el piso}
