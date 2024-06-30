@@ -23,19 +23,19 @@ class LaggyPilot:
         self.model = model
         self.last_action = None
 
-    def choose_action(self, obs, lag_prob=0.7):
+    def choose_action(self, obs, lag_prob=0.3):
         """
         This method implements the LaggyPilot policy.
 
         Args:
             obs: an observation returned by an environment (Gym.Env)
-            lag_prob: If lag_prob is 0.7, a 30% of the time will behave as a laggy
-            pilot, otherwise it will return the action of the normal policy
+            lag_prob: If lag_prob is 0.3, a 30% of the time will behave as a laggy
+            pilot, otherwise it will return the action of the normal policy.
 
         Returns:
             tipo: action (int)
         """
         action, _states = self.model.predict(obs)
-        if self.last_action is None or np.random.random() >= lag_prob:
+        if self.last_action is None or np.random.random() <= lag_prob:
             self.last_action = action
         return self.last_action
