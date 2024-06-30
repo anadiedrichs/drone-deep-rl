@@ -1,0 +1,39 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/bitcraze/crazyflie/protos/Crazyflie.proto"
+
+WorldInfo {
+  info [
+    "Bitcraze's Crazyflie drone."
+    "This simulation allows you to pilot the drone with your keyboard."
+  ]
+  title "Crazyflie"
+}
+Viewpoint {
+  orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
+  position 0.12678169639214895 -0.15661810098178452 6.3638226903083694
+}
+TexturedBackground {
+  luminosity 8
+}
+TexturedBackgroundLight {
+  luminosity 2
+}
+RectangleArena {
+  translation 0.0595896 -0.157329 -1.33227e-15
+  floorSize 2 2
+  wallThickness 0.1
+  wallHeight 1.7
+}
+DirectionalLight {
+  direction -0.33 -1 0.5
+  intensity 8
+  castShadows TRUE
+}
+Crazyflie {
+  controller "v1_shared_autonomy"
+  supervisor TRUE
+}
