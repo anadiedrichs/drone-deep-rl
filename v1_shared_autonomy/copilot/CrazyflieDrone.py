@@ -26,7 +26,7 @@ WAITING_TIME = 5  # in seconds
 DIST_MIN = 1000  # in mm (200 + 200 + 1800 + 1800 )/4
 
 try:
-    import gym  # nasium as gym
+    import gym #nasium as gym
     import numpy as np
     from stable_baselines3 import PPO
     from stable_baselines3.common.env_checker import check_env
@@ -47,12 +47,12 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
 
         # [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
 
-        self.observation_space = Box(low=np.array([- pi, -pi / 2, - pi, 0, 0, 0.1, 2.0, 2.0, 2.0, 2.0]),
-                                     high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
-                                     dtype=np.float64)
+        #self.observation_space = Box(low=np.array([- pi, -pi / 2, - pi, 0, 0, 0.1, 2.0, 2.0, 2.0, 2.0]),
+        #                             high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
+        #                             dtype=np.float64)
+        self.observation_space = Box(low=-1, high=1, shape=(10,), dtype=np.float64)
 
         # Define agent's action space using Gym's Discrete
-
         self.action_space = Discrete(7)
 
         self.spec = gym.envs.registration.EnvSpec(id='DroneWebotsEnv-v0', max_episode_steps=max_episode_steps)
@@ -99,8 +99,6 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.timer1 = 0
         # Initialize motors
         self.motors = None
-
-
         self.initialization()
 
         print("DEBUG init DroneRobotSupervisor")
@@ -189,11 +187,11 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.motors[1].setVelocity(motor_power[1])
         self.motors[2].setVelocity(-motor_power[2])
         self.motors[3].setVelocity(motor_power[3])
-        print("====== Motors velocity =======\n")
-        print(" m1 " + str(-motor_power[0]))  # 1
-        print(" m2 " + str(motor_power[1]))  # 2
-        print(" m3 " + str(-motor_power[2]))  # 3
-        print(" m4 " + str(motor_power[3]))  # 4
+        #print("====== Motors velocity =======\n")
+        #print(" m1 " + str(-motor_power[0]))  # 1
+        #print(" m2 " + str(motor_power[1]))  # 2
+        #print(" m3 " + str(-motor_power[2]))  # 3
+        #print(" m4 " + str(motor_power[3]))  # 4
 
     def wait_keyboard(self):
         while self.keyboard.getKey() != ord('Y'):
@@ -202,9 +200,8 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
     def get_default_observation(self):
         """
          This method just returns a zero vector as a default observation
-
         """
-        return [0.0 for _ in range(self.observation_space.shape[0])]
+        return np.array([0.0 for _ in range(self.observation_space.shape[0])])
 
     def reset(self):
         """
@@ -223,7 +220,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.take_off()
 
         # Open AI Gym generic
-        return self.get_default_observation()
+        return self.get_default_observation()#, {}  # empty info dict
 
     def get_observations(self):
         """
@@ -283,7 +280,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         range_right_value = normalize_to_range(self.dist_right, 2, 2000, -1.0, 1.0, clip=True)
         range_left_value = normalize_to_range(self.dist_left, 2, 2000, -1.0, 1.0, clip=True)
 
-        self.print_debug_status()
+        #self.print_debug_status()
 
         arr = [roll, pitch, yaw_rate,
                v_x, v_y,
@@ -361,7 +358,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
             # update sensor readings
             obs = self.get_observations()
 
-            self.print_debug_status()
+            #self.print_debug_status()
 
             self.past_time = self.getTime()
             self.past_x_global = self.x_global
@@ -408,7 +405,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         # print("sideways_desired   " + str(sideways_desired) )
         # print("yaw_desired   " + str(yaw_desired) )
         # print("==================================\n")
-        self.print_debug_status()
+        # self.print_debug_status()
         # get the environment observation (sensor readings)
         obs = self.get_observations()
 
@@ -420,8 +417,12 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.past_x_global = self.x_global
         self.past_y_global = self.y_global
 
+        # truncated = False  # we do not limit the number of steps here
+        # Optionally we can pass additional info, we are not using that for now
+        info = {}
+
         # observations / state, reward ,done , {}
-        return obs, reward, self.is_done(), {}
+        return obs, reward, self.is_done(), info
 
     def get_reward(self, action=6):
 
@@ -436,3 +437,9 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         """
         raise NotImplementedError("Please Implement this method")
 
+
+
+#from pilots import pilot.Pilot
+#class CrazyflieCopilot(DroneOpenAIGymEnvironment):
+#    def __init__(self, Pilot p):
+#        super().__init__()
