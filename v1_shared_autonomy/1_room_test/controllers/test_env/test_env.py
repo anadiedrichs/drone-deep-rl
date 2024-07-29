@@ -113,12 +113,13 @@ def test_env():
     # reward is a scalar
     print(obs.shape, reward, terminated, info)
 
-    print("press Y to close the simulator")
+
     while env.keyboard.getKey() != ord('Y'):
+        print("press Y to close the simulator")
         env.step(action)
 
     # close Webots simulator
-    # env.simulationQuit(0)
+    env.simulationQuit(0)
 
 
 if __name__ == '__main__':
