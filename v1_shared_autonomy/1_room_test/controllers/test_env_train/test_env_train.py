@@ -27,6 +27,21 @@ class PilotRoom1(DroneOpenAIGymEnvironment):
     def __init__(self):
         super().__init__()
 
+    def is_in_the_corner(self,min_distance=500):
+        """
+            Return True if the distance sensors detect a corner at min_distance value
+        """
+
+        assert min_distance is not None
+        assert min_distance < 2000
+        assert min_distance > 10
+
+        return bool((self.dist_front <= min_distance and self.dist_left <= min_distance) or \
+             (self.dist_front <= min_distance and self.dist_right <= min_distance) or \
+             (self.dist_back <= min_distance and self.dist_left <= min_distance) or \
+             (self.dist_back <= min_distance and self.dist_right <= min_distance))
+
+
     def get_reward(self, action=6):
 
         """
@@ -36,40 +51,39 @@ class PilotRoom1(DroneOpenAIGymEnvironment):
         action = int(action)
         r_avoid_obstacle = 0
 
-        # 2000 mm es el máximo, 100 mm = 10 cm
-        # if the drone reach a corner
-        if bool((self.dist_front <= 100 and self.dist_left <= 100) or \
-                (self.dist_front <= 100 and self.dist_right <= 100) or \
-                (self.dist_back <= 100 and self.dist_left <= 100) or \
-                (self.dist_back <= 100 and self.dist_right <= 100)):
+        # Calculate the minimum distance to the walls
+        dist_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
+        # dist_average = (self.dist_front + self.dist_back + self.dist_right + self.dist_left) / 4
+        print("DEBUG  dist_min " + str(dist_min))
 
-            # drone wins a big reward
-            reward = 10
-        else:
+        # dist_min in (400,500)
+        if(dist_min < 500 and dist_min > 400 and self.is_in_the_corner(500)):
+            reward=10
+        elif(dist_min > 300 and self.is_in_the_corner(400)):
+            reward=20
+        elif (dist_min > 200 and self.is_in_the_corner(300)):
+            reward = 30
+        elif(self.is_in_the_corner(200)):
+            reward = 40
 
-            # be near an obstacle
-            too_close = (self.dist_front <= 100 or self.dist_left <= 100 or \
-                         self.dist_right <= 100 or self.dist_back <= 100)
+        # penalize if the drone is not near a corner
+        if reward == 0:
+            reward = -0.1 * dist_min
 
-            if too_close:
-                # penalize to be too close an obstacle or wall
-                r_avoid_obstacle = -1
-            else:
-                # reward to keep going
-                r_avoid_obstacle = 1
+        # Reward for every step the episode hasn't ended
+        print("Reward value " + str(reward))
 
-        reward = reward + r_avoid_obstacle
+        # update cummulative reward
+        self.episode_score += reward
+        print("Episode score " + str(self.episode_score))
 
         # Calcular valores mínimo y máximo de recompensa
         # Dependiente del escenario
-        min_reward = -1  #
-        max_reward = 10  #
+        min_reward = -100  #
+        max_reward = 40  #
 
         # Normalizar la recompensa
         normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
-
-        # Reward for every step the episode hasn't ended
-        # print("DEBUG Reward value " + str(reward))
         # print("DEBUG normalized reward " + str(normalized_reward))
         return normalized_reward
 
@@ -78,23 +92,28 @@ class PilotRoom1(DroneOpenAIGymEnvironment):
         Return True when:
          * the drone reach a corner
         """
-
+        done = False
         # if the drone reach a corner
         if bool((self.dist_front <= 100 and self.dist_left <= 100) or \
                 (self.dist_front <= 100 and self.dist_right <= 100) or \
                 (self.dist_back <= 100 and self.dist_left <= 100) or \
                 (self.dist_back <= 100 and self.dist_right <= 100)):
-            return True
+            done = True
+            self.is_success = True
+        else:
+            # analyze reward threshold
+            if self.episode_score <= -1_000_000 or self.episode_score > 100_000:
+                done = True
+                self.is_success = False
 
-        return False
+        return done
 
 
 def test_env():
     # Initialize the environment
     env = PilotRoom1()
-
+    #env = DummyVecEnv([lambda: env])
     tmp_path = "./logs/"
-
     env = Monitor(env, filename=tmp_path, info_keywords=("is_success",))
 
 
@@ -125,7 +144,7 @@ def test_env():
     # improvement is greater than 3
 
     # start training
-    # model.learn(total_timesteps=100_000)
+    print("INICIO ENTRENAMIENTO")
     model.learn(total_timesteps=50_000, # callback=eval_callback,
                 progress_bar=True)
 
