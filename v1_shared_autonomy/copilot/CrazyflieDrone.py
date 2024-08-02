@@ -33,7 +33,7 @@ try:
 except ImportError:
     sys.exit(
         'Please make sure you have all dependencies installed. '
-        'Run: "pip3 install numpy gym==0.21 stable_baselines3"'
+        'Run: "pip3 install numpy gymnasium stable_baselines3"'
     )
 
 
@@ -99,6 +99,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.timer1 = 0
         # Initialize motors
         self.motors = None
+        self.is_success = False
         self.initialization()
 
         print("DEBUG init DroneRobotSupervisor")
@@ -155,6 +156,7 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.height_desired = HEIGHT_INITIAL
         self.timestamp_take_off = 0
         self.timer1 = 0
+        self.is_success = False
 
         # Initialize motors
         self.motors = [None for _ in range(4)]
@@ -416,13 +418,11 @@ class DroneOpenAIGymEnvironment(Supervisor, gym.Env):
         self.past_time = self.getTime()
         self.past_x_global = self.x_global
         self.past_y_global = self.y_global
+        # successful episode ?
+        done = self.is_done()
+        info = {"is_success": self.is_success}
 
-        # truncated = False  # we do not limit the number of steps here
-        # Optionally we can pass additional info, we are not using that for now
-        info = {}
-
-        # observations / state, reward ,done , {}
-        return obs, reward, self.is_done(), info
+        return obs, reward, done, info
 
     def get_reward(self, action=6):
 
