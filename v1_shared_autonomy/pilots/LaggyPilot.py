@@ -1,8 +1,8 @@
 import numpy as np
 from stable_baselines3 import PPO
+from pilot import Pilot
 
-
-class LaggyPilot:
+class LaggyPilot(Pilot):
 
     def __init__(self, model: PPO, seed=1):
         """

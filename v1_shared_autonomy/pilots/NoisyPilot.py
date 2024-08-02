@@ -1,8 +1,9 @@
 import numpy as np
 from stable_baselines3 import PPO
+from pilot import Pilot
 
 
-class NoisyPilot:
+class NoisyPilot(Pilot):
 
     action_space: int
 
