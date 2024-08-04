@@ -37,8 +37,17 @@ except ImportError:
     )
 
 
-class CrazyflieEnvDiscreteActions(Supervisor, gym.Env):
+class DroneRobotSupervisor(Supervisor, gym.Env):
+    """ Implementation of the crazyflie environment for webots.
+    * Observation space: 10 continuous variables.
+    [roll, pitch, yaw_rate, v_x, v_y, altitude,
+    range_front_value,range_back_value,
+    self.range_right_value, self.range_left_value ]
 
+    * Action space: 7 discrete actions.
+    See step() method implementation.
+
+    """
     def __init__(self, max_episode_steps=1000):
         super().__init__()
 
@@ -445,7 +454,7 @@ class CrazyflieEnvDiscreteActions(Supervisor, gym.Env):
 
 
 
-class CornerEnv(CrazyflieEnvDiscreteActions):
+class CornerEnv(DroneRobotSupervisor):
     """
     A Crazyflie pilot with the mission of reaching a corner in a square room.
     """
