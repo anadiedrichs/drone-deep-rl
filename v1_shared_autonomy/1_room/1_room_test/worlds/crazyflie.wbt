@@ -34,6 +34,6 @@ DirectionalLight {
   castShadows TRUE
 }
 Crazyflie {
-  controller "test_env"
+  controller "test_env_train"
   supervisor TRUE
 }

@@ -484,7 +484,6 @@ class CornerEnv(DroneRobotSupervisor):
         """
         reward = 0
         action = int(action)
-        r_avoid_obstacle = 0
 
         # Calculate the minimum distance to the walls
         dist_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
@@ -493,13 +492,16 @@ class CornerEnv(DroneRobotSupervisor):
 
         # dist_min in (400,500)
         if(dist_min < 500 and dist_min > 400 and self.is_in_the_corner(500)):
-            reward=10
+            reward=100
         elif(dist_min > 300 and self.is_in_the_corner(400)):
-            reward=20
+            reward=200
         elif (dist_min > 200 and self.is_in_the_corner(300)):
-            reward = 30
-        elif(self.is_in_the_corner(200)):
-            reward = 40
+            reward = 300
+        # a big reward when reach the corner
+        elif(self.is_in_the_corner(100)):
+            reward = 1000
+        elif (self.is_in_the_corner(200)):
+            reward = 400
 
         # penalize if the drone is not near a corner
         if reward == 0:
@@ -515,7 +517,7 @@ class CornerEnv(DroneRobotSupervisor):
         # Calcular valores mínimo y máximo de recompensa
         # Dependiente del escenario
         min_reward = -100  #
-        max_reward = 40  #
+        max_reward = 1000  #
 
         # Normalizar la recompensa
         normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
@@ -536,13 +538,6 @@ class CornerEnv(DroneRobotSupervisor):
             done = True
             self.terminated = True
             self.is_success = True
-       # else:
-       #     # analyze reward threshold
-       #     if self.episode_score <= -1_000_000 or self.episode_score > 100_000:
-       #         done = True
-       #         self.is_success = False
-       #         self.terminated = False
-       #         self.truncated = True
 
         return done
 
