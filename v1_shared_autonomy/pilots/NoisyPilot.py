@@ -40,12 +40,13 @@ class NoisyPilot(Pilot):
             tipo: action (int)
         """
         action = None
+        _states = []
 
-        if np.random.random() > noise_prob:
+        if np.random.random() <= noise_prob:
             
-            action, _states = self.model.predict(obs)
-
-        else:
             action = np.random.randint(0, self.action_space)
 
-        return action
+        else:
+            action, _states = self.model.predict(obs)
+
+        return action, _states

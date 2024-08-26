@@ -1,3 +1,4 @@
+from stable_baselines3 import PPO
 class Pilot():
 
     def __init__(self, model: PPO, seed=1, action_space=7):

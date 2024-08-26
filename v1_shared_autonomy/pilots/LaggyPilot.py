@@ -35,7 +35,7 @@ class LaggyPilot(Pilot):
         Returns:
             tipo: action (int)
         """
-        action, _states = self.model.predict(obs)
+        action, _states = self.model.predict(obs, deterministic=True)
         if self.last_action is None or np.random.random() <= lag_prob:
             self.last_action = action
-        return self.last_action
+        return self.last_action, _states
