@@ -14,9 +14,14 @@ from controller import DistanceSensor
 from math import cos, sin, pi
 from gym.spaces import Box, Discrete
 
+
 sys.path.append('../utils')
 from utilities import *
 from pid_controller import *
+sys.path.append('../pilots')
+
+from pilot import *
+
 
 MAX_HEIGHT = 0.7  # in meters
 HEIGHT_INCREASE = 0.05  # 5 cm
@@ -26,7 +31,7 @@ WAITING_TIME = 5  # in seconds
 DIST_MIN = 1000  # in mm (200 + 200 + 1800 + 1800 )/4
 
 try:
-    import gym #nasium as gym
+    import gym  #nasium as gym
     import numpy as np
     from stable_baselines3 import PPO
     from stable_baselines3.common.env_checker import check_env
@@ -38,28 +43,14 @@ except ImportError:
 
 
 class DroneRobotSupervisor(Supervisor, gym.Env):
-    """ Implementation of the crazyflie environment for webots.
-    * Observation space: 10 continuous variables.
-    [roll, pitch, yaw_rate, v_x, v_y, altitude,
-    range_front_value,range_back_value,
-    self.range_right_value, self.range_left_value ]
-
-    * Action space: 7 discrete actions.
-    See step() method implementation.
-
-    """
+"""
+Implementation of the crazyflie environment for webots.
+"""
     def __init__(self, max_episode_steps=1000):
         super().__init__()
-
-        # 1) OpenAIGym generics
-        # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
-
-        # [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
-
-        #self.observation_space = Box(low=np.array([- pi, -pi / 2, - pi, 0, 0, 0.1, 2.0, 2.0, 2.0, 2.0]),
-        #                             high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
-        #                             dtype=np.float64)
-        self.observation_space = Box(low=-1, high=1, shape=(10,), dtype=np.float64)
+        self.training_mode = False # True if we are training a copilot
+        self.obs_array = None # pilot input
+        self.observation_space = self.get_observation_space()
 
         # Define agent's action space using Gym's Discrete
         self.action_space = Discrete(7)
@@ -67,9 +58,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.spec = gym.envs.registration.EnvSpec(id='CrazyflieWebotsEnv-v0', max_episode_steps=max_episode_steps)
 
         # 2) Environment specific configuration
-
-        timestep = int(self.getBasicTimeStep())
-        self.timestep = timestep
+        self.timestep = int(self.getBasicTimeStep())
 
         # Crazyflie velocity PID controller
         self.PID_crazyflie = None
@@ -111,12 +100,17 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.is_success = False
         self.terminated = False
         self.truncated = False
-        self.initialization()
+        self.pilot = None
+        self.alpha = 0.5  # copilot coefficient
+        self._initialization()
 
         print("DEBUG init DroneRobotSupervisor")
 
-    def initialization(self):
-        """ Internal function to initializse sensors and actuators"""
+    def _initialization(self):
+        """
+        Internal function for initial sensors and actuators setup.
+        It must be called always after __init__ and reset.
+        """
 
         self.timestep = int(self.getBasicTimeStep())
 
@@ -173,14 +167,16 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
         # Initialize motors
         self.motors = [None for _ in range(4)]
-        self.setup_motors()
-
-
+        self._setup_motors()
+        # pilot & copilot
+        self.pilot = None
+        self.alpha = 0.5 # copilot coefficient
+        self.obs_array = self.get_default_observation()
         print("DEBUG initialization")
 
-    def setup_motors(self):
+    def _setup_motors(self):
         """
-        This method initializes the four motors.
+        This method initializes the four Crazyflie propellers / motors.
         """
 
         self.motors[0] = self.getDevice('m1_motor')
@@ -191,12 +187,50 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         for i in range(len(self.motors)):
             self.motors[i].setPosition(float('inf'))
 
-        self.setup_motors_velocity(np.array([1.0, 1.0, 1.0, 1.0]))
+        self._setup_motors_velocity(np.array([1.0, 1.0, 1.0, 1.0]))
+    def _get_observation_space(self)->Box:
 
-    def setup_motors_velocity(self, motor_power):
+        # 1) OpenAIGym generics
+        # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
+
+        # [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
+
+        #self.observation_space = Box(low=np.array([- pi, -pi / 2, - pi, 0, 0, 0.1, 2.0, 2.0, 2.0, 2.0]),
+        #                             high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
+        #
+        return Box(low=-1, high=1, shape=(10,), dtype=np.float64)
+    def _set_observation_space(self,  b: Box):
         """
-        This method sets the motors' velocity
+
+        * Observation space: 10 continuous variables.
+        [roll, pitch, yaw_rate, v_x, v_y, altitude,
+        range_front_value,range_back_value,
+        self.range_right_value, self.range_left_value ]
+
+        * Action space: 7 discrete actions.
+        See step() method implementation.
         """
+        self.observation_space = b
+    def _setup_motors_velocity(self, motor_power):
+    """
+    Sets the velocity for each motor in the drone.
+
+    This method takes a list of motor power values and applies them to the
+    corresponding motors. Negative values are applied to some motors to account
+    for their orientation or intended direction of rotation.
+
+    Parameters:
+    motor_power (list of float): A list of four float values representing the
+    power to be applied to each motor. The order corresponds to the motors'
+    positions:
+        - motor_power[0]: Power for the first motor (inverted)
+        - motor_power[1]: Power for the second motor
+        - motor_power[2]: Power for the third motor (inverted)
+        - motor_power[3]: Power for the fourth motor
+
+    The motors are assumed to be positioned such that the first and third motors
+    require inversion (negative power) for the drone to move in the intended direction.
+    """
 
         self.motors[0].setVelocity(-motor_power[0])
         self.motors[1].setVelocity(motor_power[1])
@@ -226,8 +260,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.simulationReset()
         super().step(self.timestep)
 
-        # Motors
-        self.initialization()
+        # reset to initial values
+        self._initialization()
 
         # Internals
         super().step(self.timestep)
@@ -235,7 +269,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.take_off()
 
         # Open AI Gym generic
-        return self.get_default_observation()#, {}  # empty info dict
+        return self.get_default_observation()  #, {}  # empty info dict
 
     def get_observations(self):
         """
@@ -303,8 +337,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                range_left_value]
 
         arr = np.array(arr)
-
+        # we store in obs_array only the sensors observations
+        self.obs_array = arr
         # print("DEBUG get_observations "+str(arr))
+        if self.pilot is not None:
+            action, _ = self.pilot.choose_action(self.obs_array)
+            arr = np.append(arr,normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
+
 
         return arr
 
@@ -368,7 +407,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                                                  0, self.height_desired,
                                                  self.roll, self.pitch, self.yaw_rate,
                                                  self.alt, self.v_x, self.v_y)
-            self.setup_motors_velocity(motor_power)
+            self._setup_motors_velocity(motor_power)
             super().step(self.timestep)
 
             # update sensor readings
@@ -387,6 +426,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         yaw_desired = 0
 
         action = int(action)
+
+        if self.pilot is not None:
+            if self.training_mode:
+                action, _ = self.pilot.choose_action(self.obs_array)
+            else:
+                # add alpha_parameter
+                action, _ = self.choose_action(self.obs_array)
 
         if action == 0:
             forward_desired = 0.005  # go forward
@@ -412,7 +458,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                                              yaw_desired, self.height_desired,
                                              self.roll, self.pitch, self.yaw_rate,
                                              self.alt, self.v_x, self.v_y)
-        self.setup_motors_velocity(motor_power)
+        self._setup_motors_velocity(motor_power)
 
         super().step(self.timestep)
         # print("====== PID input ACTION =======\n")
@@ -438,6 +484,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
         return obs, reward, done, info
 
+    def set_pilot(self, p: Pilot, coef: float):
+        self.pilot = p
+        # training mode set externally
+        # self.training_mode = True
+        self.alpha = coef
+
     def get_reward(self, action=6):
 
         """
@@ -445,6 +497,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         """
 
         raise NotImplementedError("Please Implement this method")
+
     def is_done(self):
         """
         Return True when a final state is reached.
@@ -452,16 +505,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         raise NotImplementedError("Please Implement this method")
 
 
-
-
 class CornerEnv(DroneRobotSupervisor):
     """
     A Crazyflie pilot with the mission of reaching a corner in a square room.
     """
+
     def __init__(self):
         super().__init__()
 
-    def is_in_the_corner(self,min_distance=500):
+    def is_in_the_corner(self, min_distance=500):
         """
             Return True if the distance sensors detect a corner at min_distance value
         """
@@ -470,10 +522,9 @@ class CornerEnv(DroneRobotSupervisor):
         assert min_distance > 10
 
         return bool((self.dist_front <= min_distance and self.dist_left <= min_distance) or \
-             (self.dist_front <= min_distance and self.dist_right <= min_distance) or \
-             (self.dist_back <= min_distance and self.dist_left <= min_distance) or \
-             (self.dist_back <= min_distance and self.dist_right <= min_distance))
-
+                    (self.dist_front <= min_distance and self.dist_right <= min_distance) or \
+                    (self.dist_back <= min_distance and self.dist_left <= min_distance) or \
+                    (self.dist_back <= min_distance and self.dist_right <= min_distance))
 
     def get_reward(self, action=6):
 
@@ -491,14 +542,14 @@ class CornerEnv(DroneRobotSupervisor):
         print("DEBUG  dist_min " + str(dist_min))
 
         # dist_min in (400,500)
-        if(dist_min < 500 and dist_min > 400 and self.is_in_the_corner(500)):
-            reward=100
-        elif(dist_min > 300 and self.is_in_the_corner(400)):
-            reward=200
+        if (dist_min < 500 and dist_min > 400 and self.is_in_the_corner(500)):
+            reward = 100
+        elif (dist_min > 300 and self.is_in_the_corner(400)):
+            reward = 200
         elif (dist_min > 200 and self.is_in_the_corner(300)):
             reward = 300
         # a big reward when reach the corner
-        elif(self.is_in_the_corner(100)):
+        elif (self.is_in_the_corner(100)):
             reward = 1000
         elif (self.is_in_the_corner(200)):
             reward = 400
@@ -540,4 +591,3 @@ class CornerEnv(DroneRobotSupervisor):
             self.is_success = True
 
         return done
-
