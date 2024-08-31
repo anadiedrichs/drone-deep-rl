@@ -44,6 +44,8 @@ except ImportError:
 
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.callbacks import *
+from stable_baselines3.common.monitor import Monitor
 
 class PilotRoom1(DroneOpenAIGymEnvironment):
 
@@ -116,6 +118,7 @@ class PilotRoom1(DroneOpenAIGymEnvironment):
         return False
             
 def train_pilot():
+
     # Initialize the environment
     env = PilotRoom1()
     #check_env(env)
@@ -125,20 +128,45 @@ def train_pilot():
     # https://stable-baselines3.readthedocs.io/en/master/common/logger.html#logger
     new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
 
-    # Train
+    # setup model
+
     # PPO Proximal Policy Optimization (PPO)
-    model = PPO('MlpPolicy', env, n_steps=1024,
+    model = PPO('MlpPolicy', env,
+                learning_rate=1e-3,
+                n_steps=64,
                 verbose=1,
-                tensorboard_log=tmp_path,
+               # tensorboard_log=tmp_path,
                 seed=7)
     # Set new logger
     model.set_logger(new_logger)
 
-    model.learn(total_timesteps=1000)
-    
-    # Save the model
-    model.save("ppo_model")
+    # end setup model
 
+    # CALLBACKS
+
+    # Stop training if there is no improvement after more than 3 evaluations
+    stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=3, min_evals=5, verbose=1)
+    eval_callback = EvalCallback(Monitor(env), eval_freq=1,
+                                 callback_after_eval=stop_train_callback,
+                                 best_model_save_path="./logs/best-model/",
+                                 verbose=1)
+
+    # Stops training when the model reaches the maximum number of episodes
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=50, verbose=1)
+    # Create the callback list
+    callback_list = CallbackList([eval_callback, callback_max_episodes])
+
+    # Almost infinite number of timesteps, but the training will stop early
+    # as soon as the the number of consecutive evaluations without model
+    # improvement is greater than 3
+    model.learn(total_timesteps=1000,
+                callback=callback_max_episodes,
+                progress_bar=True)
+
+    # Save the learned model
+    model.save("./logs/ppo_model_pilot_room_1")
+
+    print("TRAINING PHASE ENDED ")
     obs = env.reset()
     
     
@@ -153,9 +181,14 @@ def train_pilot():
 
 
     # Evaluate the trained agent
-#    mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100)
+    mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10)
     
-#    print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
-    
+    print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
+
+    print("EVALUATION PHASE ENDED ")
+
+
+
 if __name__ == '__main__':
     train_pilot()
+    Supervisor.simulationQuit()
