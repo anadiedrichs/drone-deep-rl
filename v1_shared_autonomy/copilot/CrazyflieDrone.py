@@ -5,21 +5,12 @@ More runners for discrete RL algorithms can be added here.
 import sys
 from controller import Supervisor
 from controller import Keyboard  # user input
-from controller import Motor
-from controller import InertialUnit
-from controller import GPS
-from controller import Gyro
-from controller import Camera
-from controller import DistanceSensor
 from math import cos, sin, pi
 from gym.spaces import Box, Discrete
-
-
 sys.path.append('../utils')
 from utilities import *
 from pid_controller import *
-sys.path.append('../pilots')
-
+sys.path.append('../../pilots')
 from pilot import *
 
 
@@ -43,14 +34,16 @@ except ImportError:
 
 
 class DroneRobotSupervisor(Supervisor, gym.Env):
-"""
-Implementation of the crazyflie environment for webots.
-"""
+    """
+    Implementation of the crazyflie environment for webots.
+    """
     def __init__(self, max_episode_steps=1000):
         super().__init__()
+        self.pilot_action = None
+        self.obs_copilot = None # copilot input
         self.training_mode = False # True if we are training a copilot
         self.obs_array = None # pilot input
-        self.observation_space = self.get_observation_space()
+        self.observation_space = self._get_observation_space()
 
         # Define agent's action space using Gym's Discrete
         self.action_space = Discrete(7)
@@ -169,9 +162,11 @@ Implementation of the crazyflie environment for webots.
         self.motors = [None for _ in range(4)]
         self._setup_motors()
         # pilot & copilot
-        self.pilot = None
+        # set pilot via set_pilot method please
+        # self.pilot = None
         self.alpha = 0.5 # copilot coefficient
         self.obs_array = self.get_default_observation()
+        self.obs_copilot = self.get_default_observation()
         print("DEBUG initialization")
 
     def _setup_motors(self):
@@ -212,35 +207,35 @@ Implementation of the crazyflie environment for webots.
         """
         self.observation_space = b
     def _setup_motors_velocity(self, motor_power):
-    """
-    Sets the velocity for each motor in the drone.
+        """
+        Sets the velocity for each motor in the drone.
 
-    This method takes a list of motor power values and applies them to the
-    corresponding motors. Negative values are applied to some motors to account
-    for their orientation or intended direction of rotation.
+        This method takes a list of motor power values and applies them to the
+        corresponding motors. Negative values are applied to some motors to account
+        for their orientation or intended direction of rotation.
 
-    Parameters:
-    motor_power (list of float): A list of four float values representing the
-    power to be applied to each motor. The order corresponds to the motors'
-    positions:
-        - motor_power[0]: Power for the first motor (inverted)
-        - motor_power[1]: Power for the second motor
-        - motor_power[2]: Power for the third motor (inverted)
-        - motor_power[3]: Power for the fourth motor
+        Parameters:
+        motor_power (list of float): A list of four float values representing the
+        power to be applied to each motor. The order corresponds to the motors'
+        positions:
+            - motor_power[0]: Power for the first motor (inverted)
+            - motor_power[1]: Power for the second motor
+            - motor_power[2]: Power for the third motor (inverted)
+            - motor_power[3]: Power for the fourth motor
 
-    The motors are assumed to be positioned such that the first and third motors
-    require inversion (negative power) for the drone to move in the intended direction.
-    """
+        The motors are assumed to be positioned such that the first and third motors
+        require inversion (negative power) for the drone to move in the intended direction.
+        """
 
         self.motors[0].setVelocity(-motor_power[0])
         self.motors[1].setVelocity(motor_power[1])
         self.motors[2].setVelocity(-motor_power[2])
         self.motors[3].setVelocity(motor_power[3])
-        #print("====== Motors velocity =======\n")
-        #print(" m1 " + str(-motor_power[0]))  # 1
-        #print(" m2 " + str(motor_power[1]))  # 2
-        #print(" m3 " + str(-motor_power[2]))  # 3
-        #print(" m4 " + str(motor_power[3]))  # 4
+        # print("====== Motors velocity =======\n")
+        # print(" m1 " + str(-motor_power[0]))  # 1
+        # print(" m2 " + str(motor_power[1]))  # 2
+        # print(" m3 " + str(-motor_power[2]))  # 3
+        # print(" m4 " + str(motor_power[3]))  # 4
 
     def wait_keyboard(self):
         while self.keyboard.getKey() != ord('Y'):
@@ -329,7 +324,7 @@ Implementation of the crazyflie environment for webots.
         range_right_value = normalize_to_range(self.dist_right, 2, 2000, -1.0, 1.0, clip=True)
         range_left_value = normalize_to_range(self.dist_left, 2, 2000, -1.0, 1.0, clip=True)
 
-        #self.print_debug_status()
+        # self.print_debug_status()
 
         arr = [roll, pitch, yaw_rate,
                v_x, v_y,
@@ -337,13 +332,15 @@ Implementation of the crazyflie environment for webots.
                range_left_value]
 
         arr = np.array(arr)
-        # we store in obs_array only the sensors observations
+        # we store in obs_array only the sensors observations (10 values)
         self.obs_array = arr
+        # for copilot input (11 values)
+
         # print("DEBUG get_observations "+str(arr))
         if self.pilot is not None:
             action, _ = self.pilot.choose_action(self.obs_array)
             arr = np.append(arr,normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
-
+            self.obs_copilot = np.array(arr)
 
         return arr
 
@@ -428,11 +425,13 @@ Implementation of the crazyflie environment for webots.
         action = int(action)
 
         if self.pilot is not None:
+            self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
             if self.training_mode:
-                action, _ = self.pilot.choose_action(self.obs_array)
+                action = self.pilot_action
             else:
                 # add alpha_parameter
-                action, _ = self.choose_action(self.obs_array)
+                action, _ = self.choose_action(self.obs_copilot)
+
 
         if action == 0:
             forward_desired = 0.005  # go forward

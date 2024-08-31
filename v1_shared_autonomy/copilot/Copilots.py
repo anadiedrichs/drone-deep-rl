@@ -4,9 +4,9 @@ More runners for discrete RL algorithms can be added here.
 
 import sys
 
-from gym.spaces import Box, Discrete
+from gym.spaces import Box
 
-from v1_shared_autonomy.copilot.CrazyflieDrone import CornerEnv
+from CrazyflieDrone import CornerEnv
 
 sys.path.append('../utils')
 from utilities import *
@@ -15,7 +15,6 @@ from pid_controller import *
 sys.path.append('../pilots')
 
 from pilot import *
-from v1_shared_autonomy.pilots.pilot import Pilot
 
 import gym  #nasium as gym
 from stable_baselines3 import PPO
@@ -29,17 +28,22 @@ class CopilotCornerEnv(CornerEnv, Pilot):
     def __init__(self, seed, model: PPO):
         super().__init__()
 
-        if model is None or not isinstance(model, PPO):
-            raise ValueError("The model must be a non-null instance of PPO.")
+        self.observation_space = self._get_observation_space()
 
-        self.seed = seed
-        np.random.seed(self.seed)
-        self.pilot_action = None
-        self.model = model
-        # Extraer la red neuronal
-        self.policy_net = self.model.policy
+        # model setup
+        self.policy_net = None
+        self.set_model(model)
 
-    def get_observation_space(self):
+        self.__seed = seed
+        np.random.seed(self.__seed)
+
+    def set_model(self, model: PPO):
+
+        if model is not None:
+            # get the ( neural net ) policy
+            self.policy_net = model.policy
+
+    def _get_observation_space(self):
         """
         We add one observation to the DroneRobotSupervisor observation list:
         the pilot's chosen action.
@@ -54,33 +58,61 @@ class CopilotCornerEnv(CornerEnv, Pilot):
 
     def choose_action(self, obs, alpha_prob=0.3):
 
+        print("OBSERVATIONS")
+        print(obs)
+        print("shape")
+        print(obs.shape)
+
         # Convertir la observación a un tensor y agregar una dimensión adicional
         obs_tensor = torch.tensor(obs).float().unsqueeze(0)
 
+        print(obs_tensor)
+        print(obs_tensor.shape)
+        print(obs_tensor.dim())
+
         # Pasar la observación a la red de política
         with torch.no_grad():
+
             latent_pi = self.policy_net.features_extractor(obs_tensor)
             # Aplicar la capa de acción
             logits = self.policy_net.mlp_extractor.policy_net(latent_pi)
+            print("logits")
+            print(logits)
             action_logits = self.policy_net.action_net(logits)
+            print("action_logits")
+            print(action_logits)
 
         # Eliminar la dimensión adicional de batch
         # si quieres ver los resultados como un vector simple
         action_logits = action_logits.squeeze(0)
+        print("action_logits")
+        print(action_logits)
 
         # convertir logits en probabilidades
         probabilities = F.softmax(action_logits, dim=-1)
+        print("probabilities")
+        print(probabilities)
 
         # Ordenar las acciones por preferencia
         action_preferences = torch.argsort(action_logits, descending=True)
+        print("action_preferences")
+        print(action_preferences)
 
         prob_sorted, _ = torch.sort(probabilities, descending=True)
+        print("prob_sorted")
+        print(prob_sorted)
 
         cumsumvar = torch.cumsum(prob_sorted, 0)
+        print("cumsumvar")
+        print(cumsumvar)
 
         selected_actions = action_preferences[cumsumvar < alpha_prob]
-
-        if  np.isin(self.pilot_action, selected_actions):
+        print("selected_actions")
+        print(selected_actions)
+        print("self.pilot_action")
+        print(self.pilot_action)
+        print(np.isin(self.pilot_action, selected_actions.numpy()))
+        if np.isin(self.pilot_action, selected_actions.numpy()):
             return self.pilot_action
         else:
             return selected_actions[0]
