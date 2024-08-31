@@ -22,8 +22,8 @@ class NoisyPilot(Pilot):
         if model is None or not isinstance(model, PPO):
             raise ValueError("The model must be a non-null instance of PPO.")
 
-        self.seed = seed
-        np.random.seed(self.seed)
+        self.__seed = seed
+        np.random.seed(self.__seed)
         self.model = model
         self.action_space = action_space
 
