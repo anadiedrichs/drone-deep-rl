@@ -25,13 +25,12 @@ La función intenta seleccionar la acción más probable, asegurándose de que, 
    - Si no, se elige la acción más probable (la que tiene el valor más alto en `action_logits`).
 
 ### Explicación Matemática:
-- **Softmax**: Dada una lista de logits `z`, la función softmax convierte estos valores en probabilidades. Para un valor \( z_i \):
-  \[
-  \text{softmax}(z_i) = \frac{e^{z_i}}{\sum_{j} e^{z_j}}
-  \]
+- **Softmax**: Dada una lista de logits `z`, la función softmax convierte estos valores en probabilidades. Para un valor $z_i$:
+- 
+$$\text{softmax}(z_i) = \frac{e^{z_i}}{\sum_{j} e^{z_j}}$$
   
-- **Suma Acumulada**: La suma acumulada \( S \) de un vector \( v \) de probabilidades ordenadas es:
-  \[
-  S_i = \sum_{j=1}^{i} v_j
-  \]
-  La condición \( S_i < \alpha \) se utiliza para seleccionar un subconjunto de acciones.
+- **Suma Acumulada**: La suma acumulada $S$ de un vector $v$ de probabilidades ordenadas es:
+- 
+  $$S_i = \sum_{j=1}^{i} v_j$$
+  
+  La condición $S_i < \alpha$ se utiliza para seleccionar un subconjunto de acciones.
