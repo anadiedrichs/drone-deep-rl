@@ -7,17 +7,6 @@ Then we test the different methods
 """
 
 import sys
-import os
-from controller import Supervisor
-
-sys.path.append('../../../../utils')
-from utilities import *
-from pid_controller import *
-
-sys.path.append('../../../../copilot')
-from CrazyflieDrone import *
-
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
@@ -25,6 +14,12 @@ from stable_baselines3.common.callbacks import *
 from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
 import pandas as pd
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
+from utils import *
+from copilot.CrazyflieDrone import CornerEnv
+from pilots import *
+
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     """
@@ -34,6 +29,7 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     :return: schedule that computes
       current learning rate depending on remaining progress
     """
+
     def func(progress_remaining: float) -> float:
         """
         Progress will decrease from 1 (beginning) to 0.
@@ -45,6 +41,7 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
 
     return func
 
+
 class StopExperimentCallback(BaseCallback):
     def __init__(self, verbose=1):
         super(StopExperimentCallback, self).__init__(verbose)
@@ -52,7 +49,8 @@ class StopExperimentCallback(BaseCallback):
     def _on_step(self):
         # print("ON STEP")
         # Access the environment from the model
-        terminated = self.model.env.envs[0].terminated  # Assumes that the first environment has the termination attribute
+        terminated = self.model.env.envs[
+            0].terminated  # Assumes that the first environment has the termination attribute
 
         if terminated:  # done is True, drone reach the corner
             self.logger.info("The drone reached the corner !! :-)")
@@ -67,9 +65,10 @@ class StopExperimentCallback(BaseCallback):
             self.model.env.envs[0].truncated = True
             self.model.env.envs[0].is_success = False
             self.logger.record("is_success", 0)
-            return False # stop the training
+            return False  # stop the training
 
-        return True # Return whether the training stops or not
+        return True  # Return whether the training stops or not
+
 
 class Params:
     """
@@ -84,15 +83,15 @@ class Params:
     gae_lambda = 0.95
     batch_size = 64
     n_steps = 512
-    ls_rate = 0.001 # linear schedule rate
-    log_path = "./logs-2024-08-05_1_test_NO_deterministic/"
-    save_model_path = "./logs-2024-08-05_1/ppo_model_pilot_room_1" # os.path.join(log_path,"ppo_model_pilot_room_1")
+    ls_rate = 0.001  # linear schedule rate
+    log_path = "./logs-2024-09-04/"
+    save_model_path = "./logs-2024-09-04/ppo_model_pilot_room_1"
     # increase this number later
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "results.csv")
 
-def run_experiment(want_to_train=True):
 
+def run_experiment(want_to_train=True):
     args = Params()
     # Initialize the environment
     env = CornerEnv()
@@ -128,7 +127,7 @@ def run_experiment(want_to_train=True):
         # Evaluate the policy
         mean_reward, std_reward = evaluate_policy(model, env,
                                                   n_eval_episodes=args.n_eval_episodes,
-                                     #             deterministic=True,
+                                                  #             deterministic=True,
                                                   return_episode_rewards=True)
         # print(f"mean_reward={mean_reward:.2f} +/- {std_reward}")
 
@@ -148,4 +147,4 @@ def run_experiment(want_to_train=True):
 if __name__ == '__main__':
     # train()
     # evaluate()
-    run_experiment(False)
+    run_experiment(True)
