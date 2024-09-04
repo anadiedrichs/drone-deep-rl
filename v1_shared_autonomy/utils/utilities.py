@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 
+
 def normalize_to_range(value, min_val, max_val, new_min, new_max, clip=False):
     """
     Normalizes value to a specified new range by supplying the current range.
@@ -32,6 +33,7 @@ def normalize_to_range(value, min_val, max_val, new_min, new_max, clip=False):
     else:
         return (new_max - new_min) / (max_val - min_val) * (value - max_val) + new_max
 
+
 def get_distance_from_target(robot_node, target_node):
     robot_coordinates = robot_node.getField('translation').getSFVec3f()
     target_coordinate = target_node.getField('translation').getSFVec3f()
@@ -40,6 +42,7 @@ def get_distance_from_target(robot_node, target_node):
     dy = robot_coordinates[1] - target_coordinate[1]
     distance_from_target = math.sqrt(dx * dx + dy * dy)
     return distance_from_target
+
 
 def plot_data(data, x_label, y_label, plot_title, save=False, save_name=None):
     """
@@ -70,13 +73,12 @@ def plot_data(data, x_label, y_label, plot_title, save=False, save_name=None):
             fig.savefig("figure")
     plt.show()
 
+
 def convert_to_interval_0_600(numero):
     # Normalizar al rango [0, 1]
     numero_normalizado = (numero + 1) / 2
-    
+
     # Escalar al rango deseado [0, 600]
     numero_convertido = numero_normalizado * 600
-    
+
     return numero_convertido
-
-
