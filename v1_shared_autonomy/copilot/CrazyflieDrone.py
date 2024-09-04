@@ -3,23 +3,21 @@ More runners for discrete RL algorithms can be added here.
 """
 
 import sys
+import math
 from controller import Supervisor
 from controller import Keyboard  # user input
 from math import cos, sin, pi
 from gym.spaces import Box, Discrete
-sys.path.append('../utils')
-from utilities import *
-from pid_controller import *
-sys.path.append('../../pilots')
-from pilot import *
-
+from utils.utilities import *
+from utils.pid_controller import *
+from pilots.pilot import *
 
 MAX_HEIGHT = 0.7  # in meters
 HEIGHT_INCREASE = 0.05  # 5 cm
 HEIGHT_INITIAL = 0.30  # 20 cm
 WAITING_TIME = 5  # in seconds
 # 2000 mm es el máximo, 200 mm = 20 cm
-DIST_MIN = 1000  # in mm (200 + 200 + 1800 + 1800 )/4
+# DIST_MIN = 1000  # in mm (200 + 200 + 1800 + 1800 )/4
 
 try:
     import gym  #nasium as gym
@@ -35,14 +33,21 @@ except ImportError:
 
 class DroneRobotSupervisor(Supervisor, gym.Env):
     """
-    Implementation of the crazyflie environment for webots.
+    Implementation of the Crazyflie environment for Webots.
     """
+
     def __init__(self, max_episode_steps=1000):
         super().__init__()
+        self.dist_left = 0
+        self.dist_right = 0
+        self.dist_back = 0
+        self.past_y_global = 0
+        self.past_x_global = 0
+        self.dist_front = 0
         self.pilot_action = None
-        self.obs_copilot = None # copilot input
-        self.training_mode = False # True if we are training a copilot
-        self.obs_array = None # pilot input
+        self.obs_copilot = None  # copilot input
+        self.training_mode = False  # True if we are training a copilot
+        self.obs_array = None  # base-pilot input
         self.observation_space = self._get_observation_space()
 
         # Define agent's action space using Gym's Discrete
@@ -161,10 +166,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # Initialize motors
         self.motors = [None for _ in range(4)]
         self._setup_motors()
-        # pilot & copilot
-        # set pilot via set_pilot method please
-        # self.pilot = None
-        self.alpha = 0.5 # copilot coefficient
+        # base-pilot & copilot
+        # set base-pilot via set_pilot method please
+        # self.base-pilot = None
+        self.alpha = 0.5  # copilot coefficient
         self.obs_array = self.get_default_observation()
         self.obs_copilot = self.get_default_observation()
         print("DEBUG initialization")
@@ -183,7 +188,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
             self.motors[i].setPosition(float('inf'))
 
         self._setup_motors_velocity(np.array([1.0, 1.0, 1.0, 1.0]))
-    def _get_observation_space(self)->Box:
+
+    def _get_observation_space(self) -> Box:
 
         # 1) OpenAIGym generics
         # Define agent's observation space using Gym's Box, setting the lowest and highest possible values
@@ -194,7 +200,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         #                             high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
         #
         return Box(low=-1, high=1, shape=(10,), dtype=np.float64)
-    def _set_observation_space(self,  b: Box):
+
+    def _set_observation_space(self, b: Box):
         """
 
         * Observation space: 10 continuous variables.
@@ -206,6 +213,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         See step() method implementation.
         """
         self.observation_space = b
+
     def _setup_motors_velocity(self, motor_power):
         """
         Sets the velocity for each motor in the drone.
@@ -236,6 +244,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # print(" m2 " + str(motor_power[1]))  # 2
         # print(" m3 " + str(-motor_power[2]))  # 3
         # print(" m4 " + str(motor_power[3]))  # 4
+
+    def render(self, mode="human"):
+        """render method is not used"""
+        pass
 
     def wait_keyboard(self):
         while self.keyboard.getKey() != ord('Y'):
@@ -339,7 +351,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # print("DEBUG get_observations "+str(arr))
         if self.pilot is not None:
             action, _ = self.pilot.choose_action(self.obs_array)
-            arr = np.append(arr,normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
+            arr = np.append(arr, normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
             self.obs_copilot = np.array(arr)
 
         return arr
@@ -380,7 +392,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         to take off the drone.
         """
 
-        while self.the_drone_took_off == False:
+        while not self.the_drone_took_off:
 
             if self.alt < MAX_HEIGHT:
 
@@ -427,11 +439,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         if self.pilot is not None:
             self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
             if self.training_mode:
+                print("copilot training ")
                 action = self.pilot_action
             else:
+                print("copilot testing ")
                 # add alpha_parameter
                 action, _ = self.choose_action(self.obs_copilot)
-
 
         if action == 0:
             forward_desired = 0.005  # go forward
@@ -469,10 +482,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # self.print_debug_status()
         # get the environment observation (sensor readings)
         obs = self.get_observations()
-
         # Reward
         reward = self.get_reward(action)
-
         # update times
         self.past_time = self.getTime()
         self.past_x_global = self.x_global
@@ -483,11 +494,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
         return obs, reward, done, info
 
-    def set_pilot(self, p: Pilot, coef: float):
+    def set_pilot(self, p: Pilot):
         self.pilot = p
-        # training mode set externally
-        # self.training_mode = True
-        self.alpha = coef
 
     def get_reward(self, action=6):
 
@@ -506,7 +514,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
 class CornerEnv(DroneRobotSupervisor):
     """
-    A Crazyflie pilot with the mission of reaching a corner in a square room.
+    A Crazyflie base-pilot with the mission of reaching a corner in a square room.
     """
 
     def __init__(self):
@@ -585,6 +593,97 @@ class CornerEnv(DroneRobotSupervisor):
                 (self.dist_front <= 100 and self.dist_right <= 100) or \
                 (self.dist_back <= 100 and self.dist_left <= 100) or \
                 (self.dist_back <= 100 and self.dist_right <= 100)):
+            done = True
+            self.terminated = True
+            self.is_success = True
+
+        return done
+
+
+class TargetAndObstaclesEnv(DroneRobotSupervisor):
+    """
+    A Crazyflie quadcopter simulation environment.
+    Mission:
+    * Reach a target in a square room.
+    * Avoid obstacle
+
+    """
+
+    def __init__(self, target_name: str):
+        super().__init__()
+        self.FIND_THRESHOLD = 0.1
+        self.target = self.getFromDef(target_name)
+        self.robot = self.getFromDef('crazyflie')
+        if self.target is None:
+            raise ValueError("Check target_name or define DEF in world.")
+
+    def _get_distance_from_target(self):
+        robot_coordinates = self.robot.getField('translation').getSFVec3f()
+        target_coordinate = self.target.getField('translation').getSFVec3f()
+
+        dx = robot_coordinates[0] - target_coordinate[0]
+        dy = robot_coordinates[1] - target_coordinate[1]
+        distance_from_target = math.sqrt(dx * dx + dy * dy)
+        return distance_from_target
+
+    def get_reward(self, action=6):
+
+        """
+        If the drone reach the target gets + 200.
+        Otherwise:
+        * penalize using the distance to the target
+        * penalize if the drone is close an obstacle
+
+        """
+        reward: int = 0
+        # Calculate the minimum distance to the walls
+        dist_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
+        print("DEBUG  dist_min " + str(dist_min))
+        # if the drone reach the target
+        distance = self._get_distance_from_target()
+        if distance <= self.FIND_THRESHOLD:
+            reward = 200
+        else:
+            # penalize using the distance to the target
+            reward = -1 * distance + self.FIND_THRESHOLD
+            # penalize if the drone is close an obstacle
+            if dist_min <= 200:
+                reward += dist_min - 200
+        # Reward for every step the episode hasn't ended
+        print("Reward value " + str(reward))
+
+        # update cummulative reward
+        self.episode_score += reward
+        print("Episode score " + str(self.episode_score))
+
+        # Calcular valores mínimo y máximo de recompensa
+        # Dependiente del escenario
+        min_reward = -200  #
+        max_reward = 200  #
+
+        # Normalizar la recompensa
+        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
+        # print("DEBUG normalized reward " + str(normalized_reward))
+        return normalized_reward
+
+    def is_done(self):
+        """
+        Return True when:
+         * the drone reach a target
+         * The drone fell to the ground
+        """
+        done = False
+        # if the drone fell to the ground
+        print("ALTURA ", str(self.alt))
+        # alt is in meters
+        if self.alt < 0.1:
+            done = True
+            self.terminated = True
+            self.is_success = False
+        # if the drone reach the target
+        distance = self._get_distance_from_target()
+        print("DISTANCE to TARGET "+str(distance))
+        if distance <= self.FIND_THRESHOLD:
             done = True
             self.terminated = True
             self.is_success = True
