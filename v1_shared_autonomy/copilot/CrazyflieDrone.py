@@ -56,11 +56,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.spec = gym.envs.registration.EnvSpec(id='CrazyflieWebotsEnv-v0', max_episode_steps=max_episode_steps)
 
         # 2) Environment specific configuration
-        self.timestep = int(self.getBasicTimeStep())
+        if self.getBasicTimeStep() != 32:
+            raise ValueError("WorldInfo.basicTimeStep should be 32 for this project.")
+        else:
+            self.timestep = int(self.getBasicTimeStep())
 
         # Crazyflie velocity PID controller
         self.PID_crazyflie = None
-
         # Initialize Sensors
         # https://github.com/cyberbotics/webots-doc/blob/master/reference/inertialunit.md
         self.imu = None
@@ -616,6 +618,8 @@ class TargetAndObstaclesEnv(DroneRobotSupervisor):
         self.robot = self.getFromDef('crazyflie')
         if self.target is None:
             raise ValueError("Check target_name or define DEF in world.")
+        if self.robot is None:
+            raise ValueError("Check robot name should be crazyflie, define DEF in world.")
 
     def _get_distance_from_target(self):
         robot_coordinates = self.robot.getField('translation').getSFVec3f()

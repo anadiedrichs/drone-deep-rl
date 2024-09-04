@@ -1,0 +1,60 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/bitcraze/crazyflie/protos/Crazyflie.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/traffic/protos/TrafficCone.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+
+WorldInfo {
+  info [
+    "Bitcraze's Crazyflie drone."
+    "This simulation train and test a pilot (PPO) to reach a target and avoid obstacles."
+  ]
+  title "Crazyflie"
+}
+Viewpoint {
+  orientation -0.5971375831486471 0.590457139984747 0.5429429736467962 2.1561857219784404
+  position 0.13167316657926437 -0.45586562259821206 6.368262811013004
+}
+TexturedBackground {
+  luminosity 8
+}
+TexturedBackgroundLight {
+  luminosity 2
+}
+RectangleArena {
+  translation 0.0595896 -0.157329 -1.33227e-15
+  floorSize 2 2
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallThickness 0.1
+  wallHeight 1.7
+}
+DEF cone_1 TrafficCone {
+  translation 0.9 0.7 0
+  scale 0.5
+}
+DEF cone_2 TrafficCone {
+  translation -0.8 0.7 0
+  scale 0.5
+  name "traffic_cone_2"
+}
+DEF cone_3 TrafficCone {
+  translation -0.8 -1.01 0
+  scale 0.5
+  name "traffic_cone_3"
+}
+DEF cone_4 TrafficCone {
+  translation 0.92 -1.01 0
+  scale 0.5
+  name "traffic_cone_4"
+}
+DEF crazyflie Crazyflie {
+  rotation -0.9056238932593837 -0.31137664942161297 -0.28790614122086056 4.407286988457912e-17
+  name "crazyflie"
+  controller "base-pilot"
+  supervisor TRUE
+}
