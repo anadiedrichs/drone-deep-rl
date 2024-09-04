@@ -14,17 +14,19 @@ policy_net = model.policy
 # Debe ser preprocesada en el mismo formato que durante el entrenamiento
 
 obs = np.array([0.1 for _ in range(10)])
-
+print(obs.shape)
 # Convertir la observación a un tensor y agregar una dimensión adicional
 obs_tensor = torch.tensor(obs).float().unsqueeze(0)
 
+print(obs_tensor.shape)
+print(obs_tensor.dim())
 # Pasar la observación a la red de política
 with torch.no_grad():
-    latent_pi = model.policy.features_extractor(obs_tensor)
+    latent_pi = policy_net.features_extractor(obs_tensor)
 
     # Aplicar la capa de acción
-    logits = model.policy.mlp_extractor.policy_net(latent_pi)
-    action_logits = model.policy.action_net(logits)
+    logits = policy_net.mlp_extractor.policy_net(latent_pi)
+    action_logits = policy_net.action_net(logits)
 
 # Eliminar la dimensión adicional de batch si quieres ver los resultados como un vector simple
 action_logits = action_logits.squeeze(0)
