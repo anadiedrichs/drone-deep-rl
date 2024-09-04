@@ -1,6 +1,10 @@
+## choose_action 
+
+Dicha función es el corazón de la autonomía compartida.
 
 ### Comportamiento General:
-La función intenta seleccionar la acción más probable, asegurándose de que, si la acción sugerida por el piloto está dentro de las acciones con una probabilidad acumulada inferior a `alpha_prob`, esa acción sea priorizada. Si no, se selecciona la acción más probable.
+
+La función `choose_action` dentro de la clase `CopilotCornerEnv` toma como entrada una observación (`obs`) y elige una acción basada en una política combinada entre un piloto (controlador manual o automático básico) y un copiloto (modelo de inteligencia artificial entrenado).
 
 ### La explicación del flujo de choose_action:
 
@@ -20,17 +24,10 @@ La función intenta seleccionar la acción más probable, asegurándose de que, 
    - Se ordenan las acciones de acuerdo con sus logits, en orden descendente (mayor preferencia primero).
    - Se ordenan las probabilidades y se calcula la suma acumulada (`torch.cumsum`). Este cálculo determina el conjunto de acciones que, al sumarlas, dan un valor acumulado menor que `alpha_prob` (en este caso, 0.3).
 
-6. **Selección Final de la Acción**:
-   - Si la acción propuesta por el piloto (`self.pilot_action`) está dentro del conjunto de acciones seleccionadas (`selected_actions`), esa acción es la elegida.
-   - Si no, se elige la acción más probable (la que tiene el valor más alto en `action_logits`).
+6**Elección de la acción**:
+   - Aquí viene la parte interesante: el programa compara la acción que el piloto básico hubiera elegido (`self.pilot_action`) con la acción más probable sugerida por el copiloto (que es la primera en la lista de `action_preferences`).
+   - Si la probabilidad de la acción del piloto es suficientemente alta (según un valor de mezcla `alpha`), entonces se elige la acción del piloto. De lo contrario, se elige la acción sugerida por el copiloto.
 
-### Explicación Matemática:
-- **Softmax**: Dada una lista de logits `z`, la función softmax convierte estos valores en probabilidades. Para un valor $z_i$:
-- 
-$$\text{softmax}(z_i) = \frac{e^{z_i}}{\sum_{j} e^{z_j}}$$
-  
-- **Suma Acumulada**: La suma acumulada $S$ de un vector $v$ de probabilidades ordenadas es:
-- 
-  $$S_i = \sum_{j=1}^{i} v_j$$
-  
-  La condición $S_i < \alpha$ se utiliza para seleccionar un subconjunto de acciones.
+7**Devolución**:
+   - Finalmente, la función devuelve la acción seleccionada y un estado vacío (que en este caso no se está utilizando).
+
