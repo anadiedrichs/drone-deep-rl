@@ -22,7 +22,6 @@ La función `choose_action` dentro de la clase `CopilotCornerEnv` toma como entr
 
 5. **Ordenar y Seleccionar Acciones**:
    - Se ordenan las acciones de acuerdo con sus logits, en orden descendente (mayor preferencia primero).
-   - Se ordenan las probabilidades y se calcula la suma acumulada (`torch.cumsum`). Este cálculo determina el conjunto de acciones que, al sumarlas, dan un valor acumulado menor que `alpha_prob` (en este caso, 0.3).
 
 6**Elección de la acción**:
    - Aquí viene la parte interesante: el programa compara la acción que el piloto básico hubiera elegido (`self.pilot_action`) con la acción más probable sugerida por el copiloto (que es la primera en la lista de `action_preferences`).
