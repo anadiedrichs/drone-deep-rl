@@ -3,6 +3,8 @@
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/traffic/protos/TrafficCone.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/bitcraze/crazyflie/protos/Crazyflie.proto"
 
 WorldInfo {
@@ -10,21 +12,27 @@ WorldInfo {
     "Example of use of a custom ODE plugin"
   ]
   title "Physics"
-  physics "flying_mybot"
   basicTimeStep 64
 }
 Viewpoint {
-  orientation 0.007858911978497975 -0.9995834396646446 -0.027770211571250626 5.816500905133365
-  position -2.087411552660437 0.08188584433490534 1.4082311497604962
+  orientation -0.5998417677523218 0.5879631624198655 0.542668566711764 2.1638813367129073
+  position -0.0003900309548819092 0.117825262289801 2.6470900607950054
 }
 TexturedBackground {
 }
 TexturedBackgroundLight {
+  texture "noon_park_empty"
 }
 RectangleArena {
+  floorSize 2 2
+  floorTileSize 0.2 0.2
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallHeight 2
 }
 Solid {
-  translation 0.25 0.05 0.1
+  translation 0.34 0.28 0.1
   children [
     Shape {
       appearance PBRAppearance {
@@ -33,7 +41,7 @@ Solid {
         metalness 0
       }
       geometry DEF BOX0 Box {
-        size 0.1 0.23 0.2
+        size 0.1 0.4 2
       }
     }
   ]
@@ -47,7 +55,7 @@ Solid {
   }
 }
 Solid {
-  translation -0.27 -0.2 0.1
+  translation -0.32 -0.31 0.1
   rotation 0 0 1 0.31
   children [
     Shape {
@@ -57,7 +65,7 @@ Solid {
         metalness 0
       }
       geometry DEF BOX1 Box {
-        size 0.1 0.1 0.2
+        size 0.1 0.3 2
       }
     }
   ]
@@ -71,7 +79,7 @@ Solid {
   }
 }
 Solid {
-  translation -0.15 0.2 0.1
+  translation -0.6 0.3 0.1
   rotation 0 0 1 0.4
   children [
     Shape {
@@ -81,7 +89,7 @@ Solid {
         metalness 0
       }
       geometry DEF BOX2 Box {
-        size 0.3 0.05 0.2
+        size 0.3 0.05 2
       }
     }
   ]
@@ -95,7 +103,7 @@ Solid {
   }
 }
 Solid {
-  translation 0.1 -0.42 0.1
+  translation 0.1 -0.53 0.1
   children [
     Shape {
       appearance PBRAppearance {
@@ -104,7 +112,7 @@ Solid {
         metalness 0
       }
       geometry DEF BOX3 Box {
-        size 0.08 0.15 0.2
+        size 0.4 0.07 2
       }
     }
   ]
@@ -117,5 +125,26 @@ Solid {
     geometry USE BOX3
   }
 }
-Crazyflie {
+DEF cone_1 TrafficCone {
+  translation -0.9 -0.9 0
+  scale 0.2
+  name "cone_1"
+}
+DEF cone_2 TrafficCone {
+  translation 0.9 -0.9 0
+  scale 0.2
+  name "cone_2"
+}
+DEF cone_3 TrafficCone {
+  translation 0.9 0 0
+  scale 0.2
+  name "cone_3"
+}
+DEF crazyflie Crazyflie {
+  hidden linearVelocity_0 0.0033124815370133833 -0.0033966263050818697 -0.17648506389651442
+  hidden angularVelocity_0 -0.04254091957194432 -0.04152326679469154 5.483777704884209e-05
+  translation 0.011973367746032254 -0.011436297197264732 0.9300484120846931
+  rotation 0.42279671832876603 0.406451757836902 0.8099629025589494 0.007638256568687339
+  controller "base-pilot"
+  supervisor TRUE
 }
