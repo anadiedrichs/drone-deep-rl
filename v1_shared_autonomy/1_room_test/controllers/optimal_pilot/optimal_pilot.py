@@ -14,43 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from utils.utilities import *
 from copilot.CrazyflieDrone import CornerEnv
 from pilots import *
-
-class HParamCallback(BaseCallback):
-    """
-    Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
-    """
-    def _on_training_start(self) -> None:
-        hparam_dict = {
-            "algorithm": self.model.__class__.__name__,
-            # TODO how to save ls_rate
-            #lr is a function
-            #"learning_rate": self.model.learning_rate,
-            "gamma": self.model.gamma,
-            "gae_lambda":self.model.gae_lambda,
-            "n_steps": self.model.n_steps,
-            "batch_size": self.model.batch_size,
-            "seed": self.model.seed,
-            "target_kl": self.model.target_kl,
-            "ent_coef":self.model.ent_coef,
-            "total_timesteps":self.model._total_timesteps,
-        }
-        # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
-        # Tensorbaord will find & display metrics from the `SCALARS` tab
-        metric_dict = {
-            "rollout/ep_len_mean": 0,
-            "rollout/ep_rew_mean":0.0,
-            "train/value_loss": 0.0,
-        }
-
-        self.logger.record(
-            "hparams",
-            HParam(hparam_dict, metric_dict),
-            exclude=("stdout", "log", "json", "csv"),
-        )
-
-    def _on_step(self) -> bool:
-        return True
-
+from datetime import datetime
 
 class StopExperimentCallback(BaseCallback):
     def __init__(self, verbose=1):
@@ -84,23 +48,29 @@ class Params:
     other configs
     """
     model_seed = 5
-    model_total_timesteps = 80_000
+    model_total_timesteps = 40_000
     model_verbose = True
     kl_target = 0.015
-    #gae_gamma = 0.99
+    gae_gamma = 0.98
     gae_lambda = 0.95
     batch_size = 64
-    n_steps = 1024
-    ls_rate = 0.001  # linear schedule rate
+    n_steps = 2048
+    lr_rate = 0.0001
+    # Cambia la arquitectura de la red a dos capas de 32 neuronas cada una
+    policy_kwargs = dict(
+        net_arch=[20, 20]
+    )
+    ls_rate = 0.00001  # linear schedule rate
     ent_coef=0.05
-    log_path = "./logs-2024-09-10_ent_coef/"
-    save_model_path = "./logs-2024-09-10_ent_coef/ppo_model_pilot_room_1"
+    log_path = "./logs-2024-09-11_1739/"
+    save_model_path = "./logs-2024-09-11_1739/ppo_model_pilot_room_1"
     # increase this number later
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "results.csv")
 
 
 def run_experiment(want_to_train=True):
+    start_time = datetime.now()
     args = Params()
     # Initialize the environment
     env = CornerEnv()
@@ -112,7 +82,8 @@ def run_experiment(want_to_train=True):
                 target_kl=args.kl_target,
                 batch_size=args.batch_size,
                 gae_lambda=args.gae_lambda,
-                learning_rate=linear_schedule(args.ls_rate),
+                learning_rate=args.lr_rate,#linear_schedule(args.ls_rate),
+                policy_kwargs=args.policy_kwargs,
                 ent_coef=args.ent_coef,
                 seed=args.model_seed, tensorboard_log=args.log_path)
     # set up logger
@@ -139,7 +110,7 @@ def run_experiment(want_to_train=True):
         # Evaluate the policy
         mean_reward, std_reward = evaluate_policy(model, env,
                                                   n_eval_episodes=args.n_eval_episodes,
-                                                  deterministic=True,
+                                                  #deterministic=True,
                                                   return_episode_rewards=True)
         data = {'Reward': mean_reward, 'Len': std_reward}
         # Create DataFrame
@@ -152,8 +123,12 @@ def run_experiment(want_to_train=True):
     # close Webots simulator
     # env.simulationQuit(0)
     print("run_experiment ended")
+    end_time = datetime.now()
+    # Calcular la duración
+    duration = end_time - start_time
+    save_experiment_time(start_time,end_time,args.log_path)
 
 if __name__ == '__main__':
-    # train()
-    # evaluate()
+
     run_experiment(want_to_train=True)
+
