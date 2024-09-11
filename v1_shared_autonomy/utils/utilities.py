@@ -2,7 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from typing import Callable
-
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.logger import HParam
+import csv
 def normalize_to_range(value, min_val, max_val, new_min, new_max, clip=False):
     """
     Normalizes value to a specified new range by supplying the current range.
@@ -64,7 +66,59 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
 
     return func
 
+# tensorboard hyperparameter logging
+class HParamCallback(BaseCallback):
+    """
+    Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
+    """
+    def _on_training_start(self) -> None:
+        hparam_dict = {
+            "algorithm": self.model.__class__.__name__,
+            # TODO how to save ls_rate
+            #lr is a function
+            #"learning_rate": self.model.learning_rate,
+            "gamma": self.model.gamma,
+            "gae_lambda":self.model.gae_lambda,
+            "n_steps": self.model.n_steps,
+            "batch_size": self.model.batch_size,
+            "seed": self.model.seed,
+            "target_kl": self.model.target_kl,
+            "ent_coef":self.model.ent_coef,
+            "total_timesteps":self.model._total_timesteps,
+        }
+        # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
+        # Tensorbaord will find & display metrics from the `SCALARS` tab
+        metric_dict = {
+            "rollout/ep_len_mean": 0,
+            "rollout/ep_rew_mean":0.0,
+            "train/value_loss": 0.0,
+        }
 
+        self.logger.record(
+            "hparams",
+            HParam(hparam_dict, metric_dict),
+            exclude=("stdout", "log", "json", "csv"),
+        )
+
+    def _on_step(self) -> bool:
+        return True
+
+def save_experiment_time(start_time,end_time,file_name):
+    duration = end_time - start_time
+    # Extraer la duración en minutos y segundos
+    duration_in_seconds = duration.total_seconds()
+    minutes = int(duration_in_seconds // 60)
+    seconds = int(duration_in_seconds % 60)
+    # Crear un archivo CSV y guardar la duración
+    with open(str(file_name)+'-experiment_duration.csv', mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["min.", "s"])
+        writer.writerow([minutes, seconds])
+
+    print(f"Duración del experimento: {minutes} minutos y {seconds} segundos")
+
+####################################################33
+# no estoy usando las funciones de aqui abajo
 
 def plot_data(data, x_label, y_label, plot_title, save=False, save_name=None):
     """
