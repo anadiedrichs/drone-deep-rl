@@ -74,7 +74,8 @@ def run_experiment(want_to_train=True):
     args = Params()
     # Initialize the environment
     env = CornerEnv()
-    env = Monitor(env, filename=args.log_path, info_keywords=("is_success","corner",))
+    env = Monitor(env, filename=args.log_path,
+                  info_keywords=("is_success","corner","height","dist_min_target"))
 
     # model to train: PPO
     model = PPO('MlpPolicy', env,
