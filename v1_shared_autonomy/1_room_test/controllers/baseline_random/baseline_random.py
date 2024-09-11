@@ -19,7 +19,7 @@ class Params:
     """
     model_seed = 5
     model_total_timesteps = 80_000
-    log_path = "./logs_2024-09-09/"
+    log_path = "./logs_2024-09-10/"
     # increase this number later
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "baseline-random-results.csv")
