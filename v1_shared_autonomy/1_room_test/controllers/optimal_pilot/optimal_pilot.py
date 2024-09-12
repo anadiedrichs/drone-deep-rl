@@ -1,5 +1,5 @@
 """
-Custom environment for base pilot or optimal pilot in room 1
+Script to test and train a base / optimal pilot in room 1
 """
 
 import sys
@@ -8,12 +8,10 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import *
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.logger import HParam
 import pandas as pd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 from utils.utilities import *
-from copilot.CrazyflieDrone import CornerEnv
-from pilots import *
+from copilot.CornerEnv import *
 from datetime import datetime
 
 class StopExperimentCallback(BaseCallback):
@@ -62,8 +60,8 @@ class Params:
     )
     ls_rate = 0.00001  # linear schedule rate
     ent_coef=0.05
-    log_path = "./logs-2024-09-11_1739/"
-    save_model_path = "./logs-2024-09-11_1739/ppo_model_pilot_room_1"
+    log_path = "./logs-2024-09-11_2345/"
+    save_model_path = "./logs-2024-09-11_2345/ppo_model_pilot_room_1"
     # increase this number later
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "results.csv")
@@ -75,18 +73,20 @@ def run_experiment(want_to_train=True):
     # Initialize the environment
     env = CornerEnv()
     env = Monitor(env, filename=args.log_path,
-                  info_keywords=("is_success","corner","height","dist_min_target"))
+                  info_keywords=env.get_info_keywords())
 
     # model to train: PPO
     model = PPO('MlpPolicy', env,
-                n_steps=args.n_steps, verbose=args.model_verbose,
+                n_steps=args.n_steps,
+                verbose=args.model_verbose,
                 target_kl=args.kl_target,
                 batch_size=args.batch_size,
                 gae_lambda=args.gae_lambda,
                 learning_rate=args.lr_rate,#linear_schedule(args.ls_rate),
                 policy_kwargs=args.policy_kwargs,
                 ent_coef=args.ent_coef,
-                seed=args.model_seed, tensorboard_log=args.log_path)
+                seed=args.model_seed,
+                tensorboard_log=args.log_path)
     # set up logger
     new_logger = configure(args.log_path, ["stdout", "csv", "tensorboard", "log"])
     model.set_logger(new_logger)
@@ -103,12 +103,12 @@ def run_experiment(want_to_train=True):
         model.save(args.save_model_path)
 
     else:
-        # evaluate the agent
+
         # Load a saved model
         print("TESTING MODE ")
         model.load(args.save_model_path)
         obs = env.reset()
-        # Evaluate the policy
+        # Evaluate the agent policy
         mean_reward, std_reward = evaluate_policy(model, env,
                                                   n_eval_episodes=args.n_eval_episodes,
                                                   #deterministic=True,

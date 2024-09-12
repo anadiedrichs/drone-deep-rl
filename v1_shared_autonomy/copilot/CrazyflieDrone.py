@@ -1,7 +1,7 @@
 """
 More runners for discrete RL algorithms can be added here.
 """
-
+import random
 import sys
 import math
 from controller import Supervisor
@@ -11,6 +11,7 @@ from gym.spaces import Box, Discrete
 from utils.utilities import *
 from utils.pid_controller import *
 from pilots.pilot import *
+from copilot import rotation
 
 MAX_HEIGHT = 0.7  # in meters
 HEIGHT_INCREASE = 0.05  # 5 cm
@@ -51,7 +52,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.observation_space = self._get_observation_space()
 
         # Define agent's action space using Gym's Discrete
-        self.action_space = Discrete(7)
+        self.action_space = Discrete(6)
 
         self.spec = gym.envs.registration.EnvSpec(id='CrazyflieWebotsEnv-v0', max_episode_steps=max_episode_steps)
 
@@ -447,7 +448,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                 print("copilot testing ")
                 # add alpha_parameter
                 action, _ = self.choose_action(self.obs_copilot)
-
+        print("ACTION number "+str(action))
         if action == 0:
             forward_desired = 0.005  # go forward
         elif action == 1:
@@ -460,10 +461,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
             yaw_desired = 0.01  # turn left
         elif action == 5:
             yaw_desired = -0.01  # turn right
-        elif action == 6:  # keep on the same place
-            forward_desired = 0
-            sideways_desired = 0
-            yaw_desired = 0
+        # elif action == 6:  # keep on the same place
+        #    forward_desired = 0
+        #    sideways_desired = 0
+        #    yaw_desired = 0
         else:
             print("Not a valid action")
 
@@ -492,12 +493,19 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.past_y_global = self.y_global
         # successful episode ?
         done = self.is_done()
-        info = {"is_success": self.is_success}
-
+        info = self.get_info()
         return obs, reward, done, info
 
     def set_pilot(self, p: Pilot):
         self.pilot = p
+    def get_info(self):
+
+        """
+            info = {"is_success": self.is_success}
+        """
+
+        raise NotImplementedError("Please Implement this method")
+
 
     def get_reward(self, action=6):
 
@@ -512,184 +520,12 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         Return True when a final state is reached.
         """
         raise NotImplementedError("Please Implement this method")
-
-
-class CornerEnv(DroneRobotSupervisor):
-    """
-    A Crazyflie base-pilot with the mission of reaching a corner in a square room.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def is_in_the_corner(self, min_distance=500):
+    def get_info_keywords(self):
         """
-            Return True if the distance sensors detect a corner at min_distance value
+        Return a Tuple[str, ...] to set info_keywords in Monitor
+        Check https://stable-baselines3.readthedocs.io/en/master/_modules/stable_baselines3/common/monitor.html#Monitor
         """
-        assert min_distance is not None
-        assert min_distance < 2000
-        assert min_distance > 10
 
-        return bool((self.dist_front <= min_distance and self.dist_left <= min_distance) or \
-                    (self.dist_front <= min_distance and self.dist_right <= min_distance) or \
-                    (self.dist_back <= min_distance and self.dist_left <= min_distance) or \
-                    (self.dist_back <= min_distance and self.dist_right <= min_distance))
-
-    def get_reward(self, action=6):
-
-        """
-         if the distance to a corner is < 50 cm, apply a stepped reward function.
-         Otherwise penalize if the drone is not near a corner by
-         - 0.1 * dist_min(ranger_sensors)
-        """
-        reward = 0
-        action = int(action)
-
-        # Calculate the minimum distance to the walls
-        dist_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
-        # dist_average = (self.dist_front + self.dist_back + self.dist_right + self.dist_left) / 4
-        print("DEBUG  dist_min " + str(dist_min))
-
-        # dist_min in (400,500)
-        if (dist_min < 500 and dist_min > 400 and self.is_in_the_corner(500)):
-            reward = 100
-        elif (dist_min > 300 and self.is_in_the_corner(400)):
-            reward = 200
-        elif (dist_min > 200 and self.is_in_the_corner(300)):
-            reward = 300
-        # a big reward when reach the corner
-        elif (self.is_in_the_corner(100)):
-            reward = 1000
-        elif (self.is_in_the_corner(200)):
-            reward = 400
-
-        # penalize if the drone is not near a corner
-        if reward == 0:
-            reward = -0.1 * dist_min
-
-        # Reward for every step the episode hasn't ended
-        print("Reward value " + str(reward))
-
-        # update cummulative reward
-        self.episode_score += reward
-        print("Episode score " + str(self.episode_score))
-
-        # Calcular valores mínimo y máximo de recompensa
-        # Dependiente del escenario
-        min_reward = -100  #
-        max_reward = 1000  #
-
-        # Normalizar la recompensa
-        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
-        # print("DEBUG normalized reward " + str(normalized_reward))
-        return normalized_reward
-
-    def is_done(self):
-        """
-        Return True when:
-         * the drone reach a corner
-        """
-        done = False
-        # if the drone reach a corner
-        if bool((self.dist_front <= 100 and self.dist_left <= 100) or \
-                (self.dist_front <= 100 and self.dist_right <= 100) or \
-                (self.dist_back <= 100 and self.dist_left <= 100) or \
-                (self.dist_back <= 100 and self.dist_right <= 100)):
-            done = True
-            self.terminated = True
-            self.is_success = True
-
-        return done
+        raise NotImplementedError("Please Implement this method")
 
 
-class TargetAndObstaclesEnv(DroneRobotSupervisor):
-    """
-    A Crazyflie quadcopter simulation environment.
-    Mission:
-    * Reach a target in a square room.
-    * Avoid obstacle
-
-    """
-
-    def __init__(self, target_name: str):
-        super().__init__()
-        self.FIND_THRESHOLD = 0.1
-        self.target = self.getFromDef(target_name)
-        self.robot = self.getFromDef('crazyflie')
-        if self.target is None:
-            raise ValueError("Check target_name or define DEF in world.")
-        if self.robot is None:
-            raise ValueError("Check robot name should be crazyflie, define DEF in world.")
-
-    def _get_distance_from_target(self):
-        robot_coordinates = self.robot.getField('translation').getSFVec3f()
-        target_coordinate = self.target.getField('translation').getSFVec3f()
-
-        dx = robot_coordinates[0] - target_coordinate[0]
-        dy = robot_coordinates[1] - target_coordinate[1]
-        distance_from_target = math.sqrt(dx * dx + dy * dy)
-        return distance_from_target
-
-    def get_reward(self, action=6):
-
-        """
-        If the drone reach the target gets + 200.
-        Otherwise:
-        * penalize using the distance to the target
-        * penalize if the drone is close an obstacle
-
-        """
-        reward: int = 0
-        # Calculate the minimum distance to the walls
-        dist_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
-        print("DEBUG  dist_min " + str(dist_min))
-        # if the drone reach the target
-        distance = self._get_distance_from_target()
-        if distance <= self.FIND_THRESHOLD:
-            reward = 200
-        else:
-            # penalize using the distance to the target
-            reward = -1 * distance + self.FIND_THRESHOLD
-            # penalize if the drone is close an obstacle
-            if dist_min <= 200:
-                reward += dist_min - 200
-        # Reward for every step the episode hasn't ended
-        print("Reward value " + str(reward))
-
-        # update cummulative reward
-        self.episode_score += reward
-        print("Episode score " + str(self.episode_score))
-
-        # Calcular valores mínimo y máximo de recompensa
-        # Dependiente del escenario
-        min_reward = -200  #
-        max_reward = 200  #
-
-        # Normalizar la recompensa
-        normalized_reward = normalize_to_range(reward, min_reward, max_reward, -1, 1)
-        # print("DEBUG normalized reward " + str(normalized_reward))
-        return normalized_reward
-
-    def is_done(self):
-        """
-        Return True when:
-         * the drone reach a target
-         * The drone fell to the ground
-        """
-        done = False
-        # if the drone fell to the ground
-        print("ALTURA ", str(self.alt))
-        # alt is in meters
-        if self.alt < 0.1:
-            done = True
-            self.terminated = True
-            self.is_success = False
-        # if the drone reach the target
-        distance = self._get_distance_from_target()
-        print("DISTANCE to TARGET "+str(distance))
-        if distance <= self.FIND_THRESHOLD:
-            done = True
-            self.terminated = True
-            self.is_success = True
-
-        return done
