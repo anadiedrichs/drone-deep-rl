@@ -1,0 +1,3 @@
+# Rotación de 45 grados en torno al eje Z
+x,y,z,rotation
+0.0, 0.0, 1.0, 0.785
