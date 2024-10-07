@@ -8,7 +8,7 @@ from stable_baselines3.common.monitor import Monitor
 import pandas as pd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 from utils.utilities import *
-from copilot.CrazyflieDrone import CornerEnv
+from copilot.CornerEnv import *
 import numpy as np
 
 
@@ -18,8 +18,8 @@ class Params:
     other configs
     """
     model_seed = 5
-    model_total_timesteps = 80_000
-    log_path = "./logs_2024-09-10/"
+    model_total_timesteps = 50_000
+    log_path = "./logs_2024-10-07/"
     # increase this number later
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "baseline-random-results.csv")
