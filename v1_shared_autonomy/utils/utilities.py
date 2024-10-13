@@ -76,7 +76,7 @@ class HParamCallback(BaseCallback):
             "algorithm": self.model.__class__.__name__,
             # TODO how to save ls_rate
             #lr is a function
-            #"learning_rate": self.model.learning_rate,
+            "learning_rate": self.model.learning_rate,
             "gamma": self.model.gamma,
             "gae_lambda":self.model.gae_lambda,
             "n_steps": self.model.n_steps,
@@ -110,7 +110,7 @@ def save_experiment_time(start_time,end_time,file_name):
     minutes = int(duration_in_seconds // 60)
     seconds = int(duration_in_seconds % 60)
     # Crear un archivo CSV y guardar la duración
-    with open(str(file_name)+'-experiment_duration.csv', mode='w', newline='') as file:
+    with open(str(file_name)+'_experiment_duration.csv', mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["min.", "s"])
         writer.writerow([minutes, seconds])
