@@ -1,17 +1,17 @@
 """
 More runners for discrete RL algorithms can be added here.
 """
-import random
 import sys
-import math
+import pandas as pd
 from controller import Supervisor
 from controller import Keyboard  # user input
 from math import cos, sin, pi
-from gym.spaces import Box, Discrete
+from gymnasium.spaces.discrete import Discrete
+from gymnasium.spaces.box import Box
+#from gym.spaces import Box, Discrete
 from utils.utilities import *
 from utils.pid_controller import *
 from pilots.pilot import *
-from copilot import rotation
 
 MAX_HEIGHT = 0.7  # in meters
 HEIGHT_INCREASE = 0.05  # 5 cm
@@ -39,6 +39,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
     def __init__(self, max_episode_steps=1000):
         super().__init__()
+        self.max_episode_steps = max_episode_steps
         self.dist_left = 0
         self.dist_right = 0
         self.dist_back = 0
@@ -61,7 +62,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
             raise ValueError("WorldInfo.basicTimeStep should be 32 for this project.")
         else:
             self.timestep = int(self.getBasicTimeStep())
-
+        # Get keyboard, used by trajectory generation
+        self._keyboard = Keyboard()
+        self._keyboard.enable(self.timestep)
         # Crazyflie velocity PID controller
         self.PID_crazyflie = None
         # Initialize Sensors
@@ -75,10 +78,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.range_left = None
         self.range_back = None
         self.range_right = None
-
         self.steps_per_episode = 200  # Max number of steps per episode
         self.episode_score = 0  # Score accumulated during an episode
         self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
+        self.episode_step = 0
         self.altitude = 0  # alt normalized
         self.x_global = 0.0
         self.y_global = 0.0
@@ -103,16 +106,26 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.truncated = False
         self.pilot = None
         self.alpha = 0.5  # copilot coefficient
+        # to be done ?
+        # self.screenshoot_counter = 0
+        self.pen_activated = False
+        # crazyflie reference
+        self.robot = self.getFromDef('crazyflie')
+        self.drone_trajectory_file = None
+        self.drone_trajectory_path = None
+        self.x_pos_initial = None
+        self.y_pos_initial = None
+
         self._initialization()
 
         print("DEBUG init DroneRobotSupervisor")
+
 
     def _initialization(self):
         """
         Internal function for initial sensors and actuators setup.
         It must be called always after __init__ and reset.
         """
-
         self.timestep = int(self.getBasicTimeStep())
 
         # Crazyflie velocity PID controller
@@ -137,14 +150,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.range_back.enable(self.timestep)
         self.range_right = self.getDevice("range_right")
         self.range_right.enable(self.timestep)
-
-        # Get keyboard, not currently in use
-        self.keyboard = Keyboard()
-        self.keyboard.enable(self.timestep)
-
         self.steps_per_episode = 200  # Max number of steps per episode
         self.episode_score = 0  # Score accumulated during an episode
         self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
+        self.episode_step = 0
         self.altitude = 0  # alt normalized
         self.x_global = 0.0
         self.y_global = 0.0
@@ -165,7 +174,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.is_success = False
         self.terminated = False
         self.truncated = False
-
         # Initialize motors
         self.motors = [None for _ in range(4)]
         self._setup_motors()
@@ -175,7 +183,74 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.alpha = 0.5  # copilot coefficient
         self.obs_array = self.get_default_observation()
         self.obs_copilot = self.get_default_observation()
+        # self.screenshoot_counter = 0
+        self.pen_activated = False
+        self.drone_trajectory_file = None
+        self.x_pos_initial = None
+        self.y_pos_initial = None
+        # Crazyflie reference
+        self.robot = self.getFromDef('crazyflie')
+        if self.robot is None:
+            raise ValueError(
+                "El nodo Crazyflie no fue encontrado. Verifica el identificador DEF en el archivo del mundo.")
+        # else:
+        #     print("Nodo Crazyflie encontrado.")
+        #
+        # # Inicializar el dispositivo Pen sin activarlo todavía
+        # self._init_pen()
+
         print("DEBUG initialization")
+
+    def increment_episode_step(self):
+        self.episode_step += 1
+
+
+    def get_trajectory_file_name(self):
+        if self.drone_trajectory_file is None:
+            ValueError("trajectory file name must be set up. Use set_trajectory_path ")
+
+        return self.drone_trajectory_file
+    def set_trajectory_path(self, path_dir):
+        if self.drone_trajectory_path is None:
+            self.drone_trajectory_path = path_dir
+
+    def set_trajectory_file_name(self, file_name):
+        if self.drone_trajectory_file is None:
+            if self.drone_trajectory_path is None:
+                ValueError("Set first the drone_trajectory_path by calling set_trajectory_path")
+
+            self.drone_trajectory_file = self.drone_trajectory_path + file_name
+            # Inicializar el archivo CSV para guardar la trayectoria en modo append
+            with open(self.drone_trajectory_file, "w") as f:
+                f.write("time,x,y,z\n")  # Escribir encabezado del archivo
+
+    def record_trajectory(self):
+        # Obtener la posición actual del drone
+        position = self.gps.getValues()
+        current_time = self.getTime()
+        # Agregar el tiempo y la posición al archivo CSV
+        with open(self.get_trajectory_file_name(), "a") as f:
+            f.write(f"{current_time},{position[0]},{position[1]},{position[2]}\n")
+
+    def _init_pen(self):
+        """
+        Internal function to initialize and attach a Pen to the Crazyflie robot.
+        """
+        pen_string = """
+            Pen {
+              name "pen"
+            }
+            """
+
+        # Obtener el campo extensionSlot del Crazyflie
+        extension_slot_field = self.robot.getField("extensionSlot")
+        if extension_slot_field is None:
+            raise ValueError("El campo extensionSlot no fue encontrado en el nodo Crazyflie.")
+
+        # Agregar el nodo Pen al extensionSlot
+        extension_slot_field.importMFNodeFromString(-1, pen_string)
+
+        print("DEBUG: Pen añadido al extensionSlot del Crazyflie")
 
     def _setup_motors(self):
         """
@@ -253,8 +328,11 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         pass
 
     def wait_keyboard(self):
-        while self.keyboard.getKey() != ord('Y'):
+        while self._keyboard.getKey() != ord('Y'):
             super().step(self.timestep)
+
+    def get_webots_keyboard(self):
+        return self._keyboard
 
     def get_default_observation(self):
         """
@@ -262,7 +340,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         """
         return np.array([0.0 for _ in range(self.observation_space.shape[0])])
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         """
         Reset the simulation
         """
@@ -278,8 +356,35 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
         self.take_off()
 
+        file_name = "trajectory_x_"+str(self.x_global)+"_y_"+str(self.y_global)
+        self.set_trajectory_file_name(file_name)
+        self.x_pos_initial = self.x_global
+        self.y_pos_initial = self.y_global
+
+        # # Activar el Pen después de que el drone haya despegado
+        # extension_slot_field = self.robot.getField("extensionSlot")
+        # pen_node = extension_slot_field.getMFNode(-1)
+        #
+        # # Verificar si el nodo Pen fue agregado correctamente
+        # if pen_node is None:
+        #     raise ValueError("El nodo Pen no fue encontrado después de agregarlo.")
+        #
+        # # Activar el Pen para dibujar
+        # pen_write_field = pen_node.getField("write")
+        # if pen_write_field is None:
+        #     raise ValueError("El campo 'write' no fue encontrado en el nodo Pen.")
+        # pen_write_field.setSFBool(True)
+        #
+        # # Establecer el color del Pen
+        # pen_ink_color_field = pen_node.getField("inkColor")
+        # if pen_ink_color_field is None:
+        #     raise ValueError("El campo 'inkColor' no fue encontrado en el nodo Pen.")
+        # pen_ink_color_field.setSFColor([0.0, 0.0, 1.0])  # Color azul
+        #
+        # print("DEBUG: Pen activado después del despegue")
+
         # Open AI Gym generic
-        return self.get_default_observation()  #, {}  # empty info dict
+        return self.get_default_observation(), {}  # empty info dict
 
     def get_observations(self):
         """
@@ -351,7 +456,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.obs_array = arr
         # for copilot input (11 values)
 
-        # print("DEBUG get_observations "+str(arr))
+        #print("DEBUG get_observations "+str(arr))
         if self.pilot is not None:
             action, _ = self.pilot.choose_action(self.obs_array)
             arr = np.append(arr, normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
@@ -448,7 +553,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                 print("copilot testing ")
                 # add alpha_parameter
                 action, _ = self.choose_action(self.obs_copilot)
-        print("ACTION number "+str(action))
+        print("ACTION number " + str(action))
         if action == 0:
             forward_desired = 0.005  # go forward
         elif action == 1:
@@ -494,10 +599,13 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # successful episode ?
         done = self.is_done()
         info = self.get_info()
-        return obs, reward, done, info
+        # Registrar la trayectoria en cada paso
+        self.record_trajectory()
+        return obs, reward, done, self.truncated, info
 
     def set_pilot(self, p: Pilot):
         self.pilot = p
+
     def get_info(self):
 
         """
@@ -505,7 +613,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         """
 
         raise NotImplementedError("Please Implement this method")
-
 
     def get_reward(self, action=6):
 
@@ -520,6 +627,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         Return True when a final state is reached.
         """
         raise NotImplementedError("Please Implement this method")
+
     def get_info_keywords(self):
         """
         Return a Tuple[str, ...] to set info_keywords in Monitor
@@ -527,5 +635,3 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         """
 
         raise NotImplementedError("Please Implement this method")
-
-
