@@ -19,19 +19,24 @@ Controls the crazyflie and implements a wall following method in webots in Pytho
 Author:   Kimberly McGuire (Bitcraze AB)
 """
 
-
-from controller import Robot
+import math
 from controller import Keyboard
-
-from math import cos, sin
-
+from controller import Supervisor
+from math import cos, sin, sqrt
 from pid_controller import pid_velocity_fixed_height_controller
 
 FLYING_ATTITUDE = 1
 
+def normalize(vector):
+    magnitude = math.sqrt(sum(comp ** 2 for comp in vector))
+    return [comp / magnitude for comp in vector]
+def dot_product(v1, v2):
+    return sum(comp1 * comp2 for comp1, comp2 in zip(v1, v2))
+
+
 if __name__ == '__main__':
 
-    robot = Robot()
+    robot = Supervisor()
     
     timestep = int(robot.getBasicTimeStep())
 
@@ -83,6 +88,10 @@ if __name__ == '__main__':
     #PID_update_last_time = robot.getTime()
     #sensor_read_last_time = robot.getTime()
 
+    target_node = robot.getFromDef("rubber_duck")
+    robot_node = robot.getFromDef("crazyflie")
+
+
     height_desired = FLYING_ATTITUDE
 
     print("\n")
@@ -133,22 +142,7 @@ if __name__ == '__main__':
 
         key = keyboard.getKey()
         while key > 0:
-        
-            print("====== SENSORS observations =======\n")
-            print(" Roll   " + str(roll) )
-            print(" Pitch  " + str(pitch) )
-            print(" Yaw    " + str(yaw) )        
-            print("Yaw rate: " + str(yaw_rate) )        
-            print("x_global: " + str(x_global) )
-            print("v_x_global: " + str(v_x_global) )
-            print("y_global: " + str(y_global) )
-            print("v_y_global: " + str(v_y_global) )        
-            print("altitude: " + str(altitude) )
-            print("range_front: " + str(range_front_value) )
-            print("range_right: " + str(range_right_value) )
-            print("range_left: " + str(range_left_value) )
-            print("==================================\n")
-            
+           
             if key == Keyboard.UP:
                 forward_desired += 0.5
             elif key == Keyboard.DOWN:
@@ -168,6 +162,51 @@ if __name__ == '__main__':
                 
             key = keyboard.getKey()
 
+
+            if robot_node and target_node:
+                # Obtén la posición y velocidad actuales del robot
+                robot_position = robot_node.getField('translation').getSFVec3f()
+                robot_velocity = robot_node.getVelocity()[:3]  # Solo componentes de velocidad lineal (x, y, z)
+
+                # Obtén la posición del objetivo
+                target_position = target_node.getField('translation').getSFVec3f()
+
+                # Calcula el vector de dirección al objetivo
+                direction_to_target = [target_position[i] - robot_position[i] for i in range(3)]
+
+                # Normaliza los vectores
+                normalized_velocity = normalize(robot_velocity)
+                normalized_direction_to_target = normalize(direction_to_target)
+
+                # Calcula el producto punto
+                alignment = dot_product(normalized_velocity, normalized_direction_to_target)
+                print("alignment   " + str(alignment))
+                # Interpreta el valor de alignment
+                if alignment > 0.9:
+                    print("El robot se dirige hacia el objetivo.")
+                elif alignment < -0.9:
+                    print("El robot se dirige en la dirección opuesta al objetivo.")
+                else:
+                    print("El robot no se dirige directamente al objetivo.")
+            else:
+                print("No se encontró el nodo del robot o del objetivo.")
+
+            print("====== SENSORS observations =======\n")
+            print(" Roll   " + str(roll) )
+            print(" Pitch  " + str(pitch) )
+            print(" Yaw    " + str(yaw) )        
+            print("Yaw rate: " + str(yaw_rate) )        
+            print("x_global: " + str(x_global) )
+            print("v_x_global: " + str(v_x_global) )
+            print("y_global: " + str(y_global) )
+            print("v_y_global: " + str(v_y_global) )        
+            print("altitude: " + str(altitude) )
+            print("range_front: " + str(range_front_value) )
+            print("range_right: " + str(range_right_value) )
+            print("range_left: " + str(range_left_value) )
+            print("==================================\n")
+         
+        
         height_desired += height_diff_desired * dt
 
         camera_data = camera.getImage()
@@ -177,19 +216,19 @@ if __name__ == '__main__':
         range_right_value = range_right.getValue() / 1000
         range_left_value = range_left.getValue() / 1000
         
-        print("====== PID input =======\n")
-        print("dt   " + str(dt) )
-        print("forward_desired   " + str(forward_desired) )
-        print("sideways_desired   " + str(sideways_desired) )
-        print("yaw_desired   " + str(yaw_desired) )
-        print("height_desired   " + str(height_desired) )        
-        print("roll  " + str(roll) )
-        print("Pitch  " + str(pitch) )   
-        print("Yaw rate: " + str(yaw_rate) )              
-        print("altitude: " + str(altitude) )
-        print("v_x: " + str(v_x) )
-        print("v_y: " + str(v_y) )
-        print("==================================\n")
+        #print("====== PID input =======\n")
+        #print("dt   " + str(dt) )
+        #print("forward_desired   " + str(forward_desired) )
+        #print("sideways_desired   " + str(sideways_desired) )
+        #print("yaw_desired   " + str(yaw_desired) )
+        #print("height_desired   " + str(height_desired) )        
+        #print("roll  " + str(roll) )
+        #print("Pitch  " + str(pitch) )   
+        #print("Yaw rate: " + str(yaw_rate) )              
+        #print("altitude: " + str(altitude) )
+        #print("v_x: " + str(v_x) )
+        #print("v_y: " + str(v_y) )
+        #print("==================================\n")
         
         # PID velocity controller with fixed height
         motor_power = PID_crazyflie.pid(dt, forward_desired, sideways_desired,
@@ -202,11 +241,11 @@ if __name__ == '__main__':
         m3_motor.setVelocity(-motor_power[2])
         m4_motor.setVelocity(motor_power[3])
         
-        print("====== Motors velocity =======\n")
-        print(" m1 " + str(-motor_power[0]) ) # 1
-        print(" m2 " + str(motor_power[1]) )  # 2
-        print(" m3 " + str(-motor_power[2]) ) # 3       
-        print(" m4 " + str(motor_power[3]) )  # 4
+        #print("====== Motors velocity =======\n")
+        #print(" m1 " + str(-motor_power[0]) ) # 1
+        #print(" m2 " + str(motor_power[1]) )  # 2
+        #print(" m3 " + str(-motor_power[2]) ) # 3       
+        #print(" m4 " + str(motor_power[3]) )  # 4
         
         past_time = robot.getTime()
         past_x_global = x_global
