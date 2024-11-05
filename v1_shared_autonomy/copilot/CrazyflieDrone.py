@@ -37,14 +37,21 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
     Implementation of the Crazyflie environment for Webots.
     """
 
-    def __init__(self, max_episode_steps=1000):
+    def __init__(self, max_episode_steps=30_000):
         super().__init__()
+        self.render_mode = None  # no render need: None
         self.max_episode_steps = max_episode_steps
+        # a vector (vx,vy,vz)
+        self.lineal_velocity = None
+        # a vector (omega_x,omega_y,omega_z)
+        self.angular_velocity = None
         self.dist_left = 0
         self.dist_right = 0
         self.dist_back = 0
         self.past_y_global = 0
         self.past_x_global = 0
+        self.z_global = 0
+        self.past_z_global = 0
         self.dist_front = 0
         self.pilot_action = None
         self.obs_copilot = None  # copilot input
@@ -82,7 +89,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.episode_score = 0  # Score accumulated during an episode
         self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
         self.episode_step = 0
-        self.altitude = 0  # alt normalized
         self.x_global = 0.0
         self.y_global = 0.0
         self.first_time = True
@@ -93,6 +99,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.yaw_rate = 0
         self.v_x = 0
         self.v_y = 0
+        self.v_z = 0
         self.alt = 0  # in meters
         self.past_time = 0
         self.the_drone_took_off = False
@@ -150,13 +157,17 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.range_back.enable(self.timestep)
         self.range_right = self.getDevice("range_right")
         self.range_right.enable(self.timestep)
+        # a vector (vx,vy,vz)
+        self.lineal_velocity = None
+        # a vector (omega_x,omega_y,omega_z)
+        self.angular_velocity = None
         self.steps_per_episode = 200  # Max number of steps per episode
         self.episode_score = 0  # Score accumulated during an episode
         self.episode_score_list = []  # A list to save all the episode scores, used to check if task is solved
         self.episode_step = 0
-        self.altitude = 0  # alt normalized
         self.x_global = 0.0
         self.y_global = 0.0
+        self.z_global = 0.0
         self.first_time = True
         self.dt = self.timestep
         self.roll = 0
@@ -165,7 +176,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.yaw_rate = 0
         self.v_x = 0
         self.v_y = 0
+        self.v_z = 0
         self.alt = 0  # in meters
+        self.lineal_velocity = None
+        self.angular_velocity = None
         self.past_time = 0
         self.the_drone_took_off = False
         self.height_desired = HEIGHT_INITIAL
@@ -386,6 +400,36 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # Open AI Gym generic
         return self.get_default_observation(), {}  # empty info dict
 
+    def transform_velocity(self, v_x_global, v_y_global):
+        # Calcular coseno y seno de yaw
+        cos_yaw = cos(self.yaw)
+        sin_yaw = sin(self.yaw)
+
+        # Transformar velocidades globales a locales
+        self.v_x = v_x_global * cos_yaw + v_y_global * sin_yaw
+        self.v_y = -v_x_global * sin_yaw + v_y_global * cos_yaw
+
+        return self.v_x, self.v_y
+    def update_lineal_velocity(self):
+        # Get position
+        self.x_global = self.gps.getValues()[0]
+        self.y_global = self.gps.getValues()[1]
+        self.z_global = self.gps.getValues()[2]
+        self.alt = self.gps.getValues()[2]
+        # Calculate global velocity en X, Y y Z
+        v_x_global = (self.x_global - self.past_x_global) / self.dt
+        v_y_global = (self.y_global - self.past_y_global) / self.dt
+        v_z_global = (self.z_global - self.past_z_global) / self.dt
+        # Almacenar la posición global actual como pasada para el próximo cálculo
+        self.past_x_global = self.x_global
+        self.past_y_global = self.y_global
+        self.past_z_global = self.z_global
+        # Get body fixed velocities
+        self.transform_velocity(v_x_global, v_y_global)
+        self.v_z = v_z_global
+        # camera_data = camera.getImage()
+        self.lineal_velocity = np.array([self.v_x,self.v_y,self.v_z])
+
     def get_observations(self):
         """
         Read sensors values
@@ -394,7 +438,10 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         if self.first_time:
             self.past_x_global = self.gps.getValues()[0]
             self.past_y_global = self.gps.getValues()[1]
+            self.past_z_global = self.gps.getValues()[2]
             self.past_time = self.getTime()
+            # a vector (omega_x,omega_y,omega_z)
+            self.angular_velocity = np.array(self.gyro.getValues())
             self.first_time = False
 
         self.dt = self.getTime() - self.past_time
@@ -412,21 +459,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.yaw = self.imu.getRollPitchYaw()[2]
         # The angular velocity is measured in radians per second [rad/s].c
         self.yaw_rate = self.gyro.getValues()[2]
-        self.x_global = self.gps.getValues()[0]
-        v_x_global = (self.x_global - self.past_x_global) / self.dt
-        self.y_global = self.gps.getValues()[1]
-        v_y_global = (self.y_global - self.past_y_global) / self.dt
-
-        self.alt = self.gps.getValues()[2]
-
-        # Get body fixed velocities
-        cos_yaw = cos(self.yaw)
-        sin_yaw = sin(self.yaw)
-        self.v_x = v_x_global * cos_yaw + v_y_global * sin_yaw
-        self.v_y = - v_x_global * sin_yaw + v_y_global * cos_yaw
-
-        # camera_data = camera.getImage()
-
+        self.angular_velocity = np.array(self.gyro.getValues())
+        # update position and velocity
+        self.update_lineal_velocity()
         # to get the value in meters you have to divide by 1000
         self.dist_front = self.range_front.getValue()
         self.dist_back = self.range_back.getValue()
@@ -438,7 +473,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         yaw_rate = normalize_to_range(self.yaw_rate, - pi, pi, -1.0, 1.0, clip=True)
         v_x = normalize_to_range(self.v_x, 0, 10, -1.0, 1.0, clip=True)
         v_y = normalize_to_range(self.v_y, 0, 10, -1.0, 1.0, clip=True)
-        self.altitude = normalize_to_range(self.alt, 0.1, 5, -1.0, 1.0, clip=True)
+        altitude = normalize_to_range(self.alt, 0.1, 5, -1.0, 1.0, clip=True)
         range_front_value = normalize_to_range(self.dist_front, 2, 2000, -1.0, 1.0, clip=True)
         range_back_value = normalize_to_range(self.dist_back, 2, 2000, -1.0, 1.0, clip=True)
         range_right_value = normalize_to_range(self.dist_right, 2, 2000, -1.0, 1.0, clip=True)
@@ -448,7 +483,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
         arr = [roll, pitch, yaw_rate,
                v_x, v_y,
-               self.altitude, range_front_value, range_back_value, range_right_value,
+               altitude, range_front_value, range_back_value, range_right_value,
                range_left_value]
 
         arr = np.array(arr)
@@ -535,6 +570,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
             self.past_time = self.getTime()
             self.past_x_global = self.x_global
             self.past_y_global = self.y_global
+            self.past_z_global = self.z_global
 
     def step(self, action):
 
@@ -594,8 +630,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         reward = self.get_reward(action)
         # update times
         self.past_time = self.getTime()
-        self.past_x_global = self.x_global
-        self.past_y_global = self.y_global
+        #self.past_x_global = self.x_global
+        #self.past_y_global = self.y_global
         # successful episode ?
         done = self.is_done()
         info = self.get_info()
@@ -607,21 +643,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.pilot = p
 
     def get_info(self):
-
         """
             info = {"is_success": self.is_success}
         """
-
         raise NotImplementedError("Please Implement this method")
 
     def get_reward(self, action=6):
-
         """
-
         """
-
         raise NotImplementedError("Please Implement this method")
-
     def is_done(self):
         """
         Return True when a final state is reached.
