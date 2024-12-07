@@ -6,9 +6,7 @@ import pandas as pd
 from controller import Supervisor
 from controller import Keyboard  # user input
 from math import cos, sin, pi
-from gymnasium.spaces.discrete import Discrete
-from gymnasium.spaces.box import Box
-#from gym.spaces import Box, Discrete
+from gymnasium.spaces import Sequence, Box, Discrete, Tuple
 from utils.utilities import *
 from utils.pid_controller import *
 from pilots.pilot import *
@@ -21,7 +19,7 @@ WAITING_TIME = 5  # in seconds
 # DIST_MIN = 1000  # in mm (200 + 200 + 1800 + 1800 )/4
 
 try:
-    import gym  #nasium as gym
+    import gymnasium as gym  #nasium as gym
     import numpy as np
     from stable_baselines3 import PPO
     from stable_baselines3.common.env_checker import check_env
@@ -577,7 +575,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
-
+        self.increment_episode_step()
         action = int(action)
 
         if self.pilot is not None:
