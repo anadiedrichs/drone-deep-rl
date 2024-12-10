@@ -8,19 +8,14 @@ Then we test the different methods
 
 import sys
 from controller import Supervisor
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
+from utils.utilities import *
+from copilot.CornerEnv import *
 
-
-sys.path.append('../../../utils')
-from utilities import *
-from pid_controller import *
-
-
-sys.path.append('../../../copilot')
-from CrazyflieDrone import *
 
 from stable_baselines3.common.env_checker import check_env
 
-class PilotRoom1(DroneOpenAIGymEnvironment):
+class PilotRoom1(DroneRobotSupervisor):
 
     def __init__(self):
         super().__init__()
@@ -121,6 +116,24 @@ def test_env():
     # close Webots simulator
     env.simulationQuit(0)
 
+class Params13:
 
+    model_seed = 7
+    max_episode_steps=20_000
+    model_total_timesteps = 100_000
+    model_verbose = True
+    log_path = "./20241208_RS10_sb3algos/"
+    tb_log_name = "20241208"
+
+def test_SimpleCornerEnvRS10():
+    args = Params13()
+    model = None
+    # Initialize the environment
+    env = SimpleCornerEnvRS10(args.max_episode_steps)
+
+    print("Tipee Y para confirmar el experimento")
+    env.wait_keyboard()
+
+    k= env.get_webots_keyboard()
 if __name__ == '__main__':
     test_env()
