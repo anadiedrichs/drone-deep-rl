@@ -1,108 +1,117 @@
-"""
-More runners for discrete RL algorithms can be added here.
-"""
-
 import sys
-sys.path.append('../utils')
-from utilities import *
-from pid_controller import *
-from gym.spaces import Box
-from CrazyflieDrone import CornerEnv
-sys.path.append('../pilots')
-from pilot import *
-import gym  #nasium as gym
+import os
+from gymnasium.spaces.box import Box
 from stable_baselines3 import PPO
 import numpy as np
 import torch
 import torch.nn.functional as F
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
+from utils.utilities import *
+from copilot.CornerEnv import *
+from pilots.LaggyPilot import *
+from pilots.NoisyPilot import *
+from pilots.pilot import *
 
-class CopilotCornerEnv(CornerEnv, Pilot):
+class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
+    """
+    A reinforcement learning environment that combines a base environment (`SimpleCornerEnvRS10`)
+    with a `Pilot` to create a co-piloted environment. The co-pilot blends actions from the pilot
+    with its own policy network, balancing between the two based on a specified alpha.
+    """
 
-    def __init__(self, seed, model: PPO):
-        super().__init__()
+    def __init__(self, model, pilot, seed=1, alpha=0.5, action_space=6):
+        """
+        Initializes the co-piloted environment.
+
+        Args:
+            model (PPO): A trained PPO model to provide policy-based actions.
+            pilot (Pilot): The base pilot providing additional actions.
+            seed (int, optional): Seed for random number generation. Defaults to 1.
+            alpha (float, optional): Balancing factor between the pilot and co-pilot actions. Defaults to 0.5.
+            action_space (int, optional): Number of discrete actions available. Defaults to 6.
+
+        Raises:
+            ValueError: If `alpha` is not between 0 and 1.
+        """
+        SimpleCornerEnvRS10.__init__(self, pilot=pilot)
 
         self.observation_space = self._get_observation_space()
 
-        # model setup
+        Pilot.__init__(self, model, seed, alpha, action_space)
+
+        # Initialize the policy network
         self.policy_net = None
         self.set_model(model)
-        self.__alpha = 0.5
-        self.__seed = seed
-        np.random.seed(self.__seed)
 
-    def set_alpha(self, value):
-        if value is not None:
-            if value >=0 and value <=1:
-                self.alpha = value
-            else:
-                raise ValueError("alpha must be a coefficient between 0 and 1")
+        # Debugging print statements (can be removed in production)
+        print("action_space")
+        print(self.action_space)
 
     def set_model(self, model: PPO):
+        """
+        Given a PPO model, extracts its policy network.
 
+        Args:
+            model (PPO): The PPO model providing policy actions.
+        """
         if model is not None:
-            # get the ( neural net ) policy
             self.policy_net = model.policy
 
     def _get_observation_space(self):
         """
-        We add one observation to the DroneRobotSupervisor observation list:
-        the base-pilot's chosen action.
-        """
-
-        # [roll, pitch, yaw_rate, v_x, v_y, self.altitude ,self.range_front_value, self.range_back_value ,self.range_right_value, self.range_left_value ] #4
-
-        #self.observation_space = Box(low=np.array([- pi, -pi / 2, - pi, 0, 0, 0.1, 2.0, 2.0, 2.0, 2.0]),
-        #                             high=np.array([pi, pi / 2, pi, 10, 10, 5, 2000, 2000, 2000, 2000]),
-        #
-        return Box(low=-1, high=1, shape=(11,), dtype=np.float64)
-
-    def __get_index_from_value(self,value, arreglo_tensor):
-        """
-        Regresa el índice del elemento de action_preferences al que es igual el valor dado.
-
-        Args:
-          value: El valor entero a buscar.
-          arreglo_tensor: El tensor con los índices de las acciones ordenadas por preferencia.
+        Defines the observation space for the environment, including an additional dimension for
+        the pilot's chosen action.
 
         Returns:
-          El índice del elemento de action_preferences al que es igual el valor dado.
+            Box: The observation space represented as a continuous range.
+        """
+        return Box(low=-1, high=1, shape=(11,), dtype=np.float64)
+
+    def __get_index_from_value(self, value, arreglo_tensor):
+        """
+        Finds the index of a given value in a tensor.
+
+        Args:
+            value (int): The value to find.
+            arreglo_tensor (Tensor): A tensor containing action preferences.
+
+        Returns:
+            int: The index of the value in the tensor, or -1 if not found.
         """
         for i in range(len(arreglo_tensor)):
             if arreglo_tensor[i].item() == value:
                 return i
-        return -1  # Si el valor no se encuentra en action_preferences
+        return -1
 
     def choose_action(self, obs):
+        """
+        Selects an action based on the observation, blending decisions from the pilot and co-pilot.
 
-        # print("OBSERVATIONS")
-        # print(obs)
-        # print("shape")
-        # print(obs.shape)
+        Args:
+            obs (array-like): The observation input to the environment.
 
-        # Convertir la observación a un tensor y agregar una dimensión adicional
+        Returns:
+            tuple:
+                - action_to_apply (int): The final action chosen.
+                - _states (list): Additional state information (if applicable).
+        """
+        # Convert observation to tensor
         obs_tensor = torch.tensor(obs).float().unsqueeze(0)
 
-        #print(obs_tensor)
-        #print(obs_tensor.shape)
-        #print(obs_tensor.dim())
-
-        # Pasar la observación a la red de política
+        # Compute logits and probabilities from the policy network
         with torch.no_grad():
-
             latent_pi = self.policy_net.features_extractor(obs_tensor)
-            # Aplicar la capa de acción
             logits = self.policy_net.mlp_extractor.policy_net(latent_pi)
             action_logits = self.policy_net.action_net(logits)
 
-
-        # Eliminar la dimensión adicional de batch
-        # si quieres ver los resultados como un vector simple
         action_logits = action_logits.squeeze(0)
-        # convertir logits en probabilidades
         probabilities = F.softmax(action_logits, dim=-1)
+
+        # Debugging outputs
         print("probabilities")
         print(probabilities)
-        # Ordenar las acciones por preferencia
+
+        # Sort actions by preference
         action_preferences = torch.argsort(action_logits, descending=True)
         print("action_preferences")
         print(action_preferences)
@@ -112,11 +121,12 @@ class CopilotCornerEnv(CornerEnv, Pilot):
         _states = []
         action_to_apply = 0
 
-        if probabilities[index_pilot] >= ((1-self.alpha) * probabilities[copilot_action]):
+        # Blend pilot and co-pilot actions based on probabilities and alpha
+        if probabilities[index_pilot] >= ((1 - self._alpha) * probabilities[copilot_action]):
             action_to_apply = self.pilot_action
-            print("PILOTO")
+            print("PILOT")
         else:
             action_to_apply = copilot_action
-            print("COPILOTO")
+            print("COPILOT")
 
         return action_to_apply, _states
