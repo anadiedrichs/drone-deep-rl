@@ -23,11 +23,10 @@ class Pilot:
             ValueError: If the provided model is not an instance of PPO or BC.
         """
         self._check_model(model)
-        self._seed = seed
-        np.random.seed(self._seed)
-        self._model = model
+        self._validate_alpha(alpha)
+        self._rng = np.random.default_rng(seed)  # Independent random generator for this instance
         self._action_space = action_space
-        self._alpha = alpha
+
 
     def _check_model(self, model):
         """
@@ -43,6 +42,19 @@ class Pilot:
             raise ValueError("The model must be a non-null instance of PPO or BC.")
         else:
             self._model = model
+
+    def _validate_alpha(self, alpha):
+            """
+            Validates that alpha is a float between 0 and 1.
+
+            Args:
+                alpha (float): The alpha value to validate.
+
+            Raises:
+                ValueError: If alpha is not between 0 and 1.
+            """
+            if not ((0 <= alpha) and (alpha <= 1)):
+                raise ValueError("Alpha must be a float between 0 and 1.")
 
     def get_action_from_model(self, obs):
         """
