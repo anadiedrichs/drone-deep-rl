@@ -55,6 +55,8 @@ class Pilot:
             """
             if not ((0 <= alpha) and (alpha <= 1)):
                 raise ValueError("Alpha must be a float between 0 and 1.")
+            else:
+                self._alpha = alpha
 
     def get_action_from_model(self, obs):
         """
