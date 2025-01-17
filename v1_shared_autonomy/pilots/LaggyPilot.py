@@ -8,7 +8,7 @@ class LaggyPilot(Pilot):
     This introduces temporal dependency in the policy, mimicking a delayed response system.
     """
 
-    def __init__(self, model, seed=1, alpha=0.5, action_space=7):
+    def __init__(self, model, seed=1, alpha=0.5, action_space=6):
         """
         Initializes the LaggyPilot object.
 
