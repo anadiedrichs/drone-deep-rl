@@ -15,7 +15,8 @@ from pilots.pilot import *
 class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
     """
     A reinforcement learning environment that combines a base environment (`SimpleCornerEnvRS10`)
-    with a `Pilot` to create a co-piloted environment. The co-pilot blends actions from the pilot
+    with a `Pilot` to create a co-piloted environment. 
+    The co-pilot blends actions from the pilot
     with its own policy network, balancing between the two based on a specified alpha.
     """
 
