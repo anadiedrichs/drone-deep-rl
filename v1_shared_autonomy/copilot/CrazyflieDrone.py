@@ -113,7 +113,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         if pilot is not None:
             self.pilot = pilot
             self._set_observation_space(Box(low=-1, high=1, shape=(11,), dtype=np.float64))
-        self.alpha = 0.5  # copilot coefficient
         # to be done ?
         # self.screenshoot_counter = 0
         self.pen_activated = False
@@ -123,6 +122,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.drone_trajectory_path = None
         self.x_pos_initial = None
         self.y_pos_initial = None
+        self._rng = None  # Independent random generator for this instance
 
         self._initialization()
 
@@ -197,7 +197,6 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # base-pilot & copilot
         # set base-pilot via set_pilot method please
         # self.base-pilot = None
-        self.alpha = 0.5  # copilot coefficient
         self.obs_array = self.get_default_observation()
         self.obs_copilot = self.get_default_observation()
         # self.screenshoot_counter = 0
@@ -359,18 +358,22 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
     def reset(self, seed=None, options=None):
         """
-        Reset the simulation
+        Reset the simulation and gym env.
+        Since Gym v0.21 instead of env.seed(your_seed) you must use
+        env.reset(seed=your_seed)
         """
         self.simulationResetPhysics()
         self.simulationReset()
         super().step(self.timestep)
+
+        self._rng = np.random.default_rng(seed)
 
         # reset to initial values
         self._initialization()
 
         # Internals
         super().step(self.timestep)
-
+        # start the state machine to take off the drone.
         self.take_off()
 
         current_time_in_seconds = int(time.time())
