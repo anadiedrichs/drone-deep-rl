@@ -20,12 +20,12 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
     with its own policy network, balancing between the two based on a specified alpha.
     """
 
-    def __init__(self, model, pilot, seed=1, alpha=0.5, action_space=6):
+    def __init__(self, model, pilot, beta_adjuster, seed=1, alpha=0.5, action_space=6):
         """
         Initializes the co-piloted environment.
 
         Args:
-            model (PPO): A trained PPO model to provide policy-based actions.
+            model (PPO): A trained PPO model to provide policy-based actions for the pilot.
             pilot (Pilot): The base pilot providing additional actions.
             seed (int, optional): Seed for random number generation. Defaults to 1.
             alpha (float, optional): Balancing factor between the pilot and co-pilot actions. Defaults to 0.5.
@@ -40,10 +40,11 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
 
         Pilot.__init__(self, model, seed, alpha, action_space)
 
-        # Initialize the policy network
+        # Initialize the policy network for the copilot
         self.policy_net = None
-        self.set_model(model)
-
+        #self.set_model(model)
+        self.beta_adjuster = beta_adjuster  # Ajustador de beta
+        self.beta = self.beta_adjuster.beta  # Valor actual de beta
         # Debugging print statements (can be removed in production)
         print("action_space")
         print(self.action_space)
@@ -51,6 +52,7 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
     def set_model(self, model: PPO):
         """
         Given a PPO model, extracts its policy network.
+        Set the copilot policy
 
         Args:
             model (PPO): The PPO model providing policy actions.
@@ -84,6 +86,31 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
                 return i
         return -1
 
+    def get_action(self, action):
+        """
+        Returns the action to be executed according to internal states
+        @type action: int
+
+        """
+        print("DEBUG CopilotCornerEnv")
+        # If the drone is flying with a pilot
+        if self.pilot is not None:
+            # Get the action chosen by the pilot
+            self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
+            if self.training_mode:
+                print("copilot training ")
+                if self._rng.random() >= self.beta_adjuster.beta:
+                    action = self.pilot_action
+                    print("pilot action chosen during training " + str(action))
+                else:
+                    print("copilot action chosen during training " + str(action))
+            else:
+                print("copilot testing ")
+                # self must also inherit from pilot to have this function implemented
+                action, _ = self.choose_action(self.obs_copilot)
+        # otherwise, the drone is autonomous, return the action itself
+        # or the action chosen by the model itself
+        return action
     def choose_action(self, obs):
         """
         Selects an action based on the observation, blending decisions from the pilot and co-pilot.
@@ -121,7 +148,6 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         copilot_action = action_preferences[0].item()
         _states = []
         action_to_apply = 0
-
         # Blend pilot and co-pilot actions based on probabilities and alpha
         if probabilities[index_pilot] >= ((1 - self._alpha) * probabilities[copilot_action]):
             action_to_apply = self.pilot_action
