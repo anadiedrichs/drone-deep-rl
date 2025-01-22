@@ -10,8 +10,13 @@ This controller trains & evaluates an agent to build the optimal pilot for this 
 
 ## test_pilots
 
-This script evaluates the laggy and noisy pilot.
+This script evaluates the laggy and noisy pilot. 
+You have to be trained an optimal pilot model before you run this script.
 
 ## copilot-env
 
 This controller trains & evaluates an agent to build the co-pilot for the laggy and noisy pilots.
+
+## trajectory_generation
+
+Script to generate a dataset to be used in imitation learning.
