@@ -1,8 +1,7 @@
-numpy==2.2.1
-pandas==2.2.3
-torch==2.2.0
-matplotlib==3.10.0
-controller==0.1.0
+numpy
+matplotlib
+pandas
+torch
 gymnasium==0.29.1
 stable_baselines3==2.4.0
-imitation=1.0.0
+imitation==1.0.0
