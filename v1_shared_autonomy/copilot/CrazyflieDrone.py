@@ -113,6 +113,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         if pilot is not None:
             self.pilot = pilot
             self._set_observation_space(Box(low=-1, high=1, shape=(11,), dtype=np.float64))
+        else:
+            self.pilot = None
         # to be done ?
         # self.screenshoot_counter = 0
         self.pen_activated = False
@@ -197,6 +199,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # base-pilot & copilot
         # set base-pilot via set_pilot method please
         # self.base-pilot = None
+        self.beta = 0.5  # copilot coefficient
         self.obs_array = self.get_default_observation()
         self.obs_copilot = self.get_default_observation()
         # self.screenshoot_counter = 0
@@ -492,18 +495,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                v_x, v_y,
                altitude, range_front_value, range_back_value, range_right_value,
                range_left_value]
-
         arr = np.array(arr)
         # we store in obs_array only the sensors observations (10 values)
         self.obs_array = arr
         # for copilot input (11 values)
-
         #print("DEBUG get_observations "+str(arr))
         if self.pilot is not None:
             action, _ = self.pilot.choose_action(self.obs_array)
             arr = np.append(arr, normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
             self.obs_copilot = np.array(arr)
-
         return arr
 
     def print_debug_status(self):
@@ -583,22 +583,21 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         """
         Returns the action to be executed according to internal states
         @type action: int
-        
         """
         # If the drone is flying with a pilot
         if self.pilot is not None:
             # Get the action chosen by the pilot
             self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
-            if self.training_mode:
-                print("copilot training ")
-                action = self.pilot_action
-            else:
-                print("copilot testing ")
-                # self must also inherit from pilot to have this function implemented
-                action, _ = self.choose_action(self.obs_copilot)
+
+            # En entrenamiento y testeo llamamos a choose_action, que maneja beta/alpha
+            action, _ = self.choose_action(self.obs_copilot)
+
+            mode = "training" if self.training_mode else "testing"
+            print(f"Copilot {mode}: Action chosen = {action}")
+
         # otherwise, the drone is autonomous, return the action itself
         return action
-            
+    
     def step(self, action):
         # do "nothing" in this case
         if action < 0 :

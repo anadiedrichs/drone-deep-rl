@@ -44,7 +44,6 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         self.policy_net = None
         #self.set_model(model)
         self.beta_adjuster = beta_adjuster  # Ajustador de beta
-        self.beta = self.beta_adjuster.beta  # Valor actual de beta
         # Debugging print statements (can be removed in production)
         print("action_space")
         print(self.action_space)
@@ -85,32 +84,6 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
             if arreglo_tensor[i].item() == value:
                 return i
         return -1
-
-    def get_action(self, action):
-        """
-        Returns the action to be executed according to internal states
-        @type action: int
-
-        """
-        print("DEBUG CopilotCornerEnv")
-        # If the drone is flying with a pilot
-        if self.pilot is not None:
-            # Get the action chosen by the pilot
-            self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
-            if self.training_mode:
-                print("copilot training ")
-                if self._rng.random() >= self.beta_adjuster.beta:
-                    action = self.pilot_action
-                    print("pilot action chosen during training " + str(action))
-                else:
-                    print("copilot action chosen during training " + str(action))
-            else:
-                print("copilot testing ")
-                # self must also inherit from pilot to have this function implemented
-                action, _ = self.choose_action(self.obs_copilot)
-        # otherwise, the drone is autonomous, return the action itself
-        # or the action chosen by the model itself
-        return action
     def choose_action(self, obs):
         """
         Selects an action based on the observation, blending decisions from the pilot and co-pilot.
@@ -149,11 +122,20 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         _states = []
         action_to_apply = 0
         # Blend pilot and co-pilot actions based on probabilities and alpha
-        if probabilities[index_pilot] >= ((1 - self._alpha) * probabilities[copilot_action]):
-            action_to_apply = self.pilot_action
-            print("PILOT")
+        if self.training_mode:
+            # En entrenamiento, usamos beta para transicionar gradualmente al copiloto
+            action_to_apply = self._rng.choice(
+                [self.pilot_action, copilot_action],
+                p=[1 - self.beta_adjuster.beta, self.beta_adjuster.beta]  # Más beta → mayor peso del copiloto
+            )
+            print(f"Training mode: Copilot intervention (β={self.beta_adjuster.beta:.2f}), action chosen = {action_to_apply}")
         else:
-            action_to_apply = copilot_action
-            print("COPILOT")
+            # En testeo, mantenemos la lógica original con alpha
+            if probabilities[index_pilot] >= ((1 - self._alpha) * probabilities[copilot_action]):
+                action_to_apply = self.pilot_action
+                print("Testing mode: PILOT")
+            else:
+                action_to_apply = copilot_action
+                print("Testing mode: COPILOT")
 
         return action_to_apply, _states
