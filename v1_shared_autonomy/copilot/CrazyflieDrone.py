@@ -584,7 +584,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         Returns the action to be executed according to internal states
         @type action: int
         """
-        # If the drone is flying with a pilot
+        # If the drone is flying with a pilot, 
+        # the drone is a copilot
         if self.pilot is not None:
             # Get the action chosen by the pilot
             self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
@@ -607,7 +608,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         sideways_desired = 0
         yaw_desired = 0
         self.increment_episode_step()
-        action = int(action)
+        
+        action = int(self.get_action( action))
+
         print("ACTION number " + str(action))
         if action == 0:
             forward_desired = 0.09  # go forward 0.005 0.09
