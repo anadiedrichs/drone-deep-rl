@@ -20,7 +20,7 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
     with its own policy network, balancing between the two based on a specified alpha.
     """
 
-    def __init__(self, model, pilot, beta_adjuster, seed=1, alpha=0.5, action_space=6):
+    def __init__(self, model, pilot, beta_adjuster, seed=1, alpha=0.5, action_space=6, max_steps_per_episode=1000):
         """
         Initializes the co-piloted environment.
 
@@ -34,7 +34,7 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         Raises:
             ValueError: If `alpha` is not between 0 and 1.
         """
-        SimpleCornerEnvRS10.__init__(self, pilot=pilot)
+        SimpleCornerEnvRS10.__init__(self, max_episode_steps=max_steps_per_episode, pilot=pilot)
 
         self.observation_space = self._get_observation_space()
 
@@ -99,8 +99,20 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         # Convert observation to tensor
         obs_tensor = torch.tensor(obs).float().unsqueeze(0)
 
+        print(f"obs_tensor shape before: {obs_tensor.shape}")  
+
+        # Obtener el número de entradas esperadas por la red
+        expected_input_dim = self.policy_net.mlp_extractor.policy_net[0].in_features  # Tamaño esperado
+
+        # Si obs_tensor tiene más dimensiones de las esperadas, recortamos
+        if obs_tensor.shape[1] > expected_input_dim:
+            obs_tensor = obs_tensor[:, :expected_input_dim]  # Recortar última columna
+
+        print(f"obs_tensor shape after: {obs_tensor.shape}, expected: {expected_input_dim}") 
+
         # Compute logits and probabilities from the policy network
         with torch.no_grad():
+            
             latent_pi = self.policy_net.features_extractor(obs_tensor)
             logits = self.policy_net.mlp_extractor.policy_net(latent_pi)
             action_logits = self.policy_net.action_net(logits)
