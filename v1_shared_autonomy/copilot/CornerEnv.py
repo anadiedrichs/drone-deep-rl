@@ -1413,7 +1413,7 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
             print("obstacle distance/1000 [m]: " + str(obs_min / 1000))
             # 2) penalize the drone if it is too close to an obstacle
             if obs_min <= self.MIN_DIST_OBSTACLES:
-                reward -= 20
+                reward -= -30
             # 4) if the drone falls, the episode is truncated
             if self.alt < 0.1:
                 reward = -30
