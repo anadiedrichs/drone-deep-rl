@@ -131,6 +131,7 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
 
         index_pilot = self.__get_index_from_value(self.pilot_action, action_preferences)
         copilot_action = action_preferences[0].item()
+        index_copilot_action = 0
         _states = []
         action_to_apply = 0
         # Blend pilot and co-pilot actions based on probabilities and alpha
@@ -143,7 +144,10 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
             print(f"Training mode: Copilot intervention (β={self.beta_adjuster.beta:.2f}), action chosen = {action_to_apply}")
         else:
             # En testeo, mantenemos la lógica original con alpha
-            if probabilities[index_pilot] >= ((1 - self._alpha) * probabilities[copilot_action]):
+            print(f"Alpha copilot {self._alpha}")
+            print(f"Pilot probability action {probabilities[index_pilot]}")
+            print(f"copilot probability action {self._alpha * probabilities[index_copilot_action]}")
+            if probabilities[index_pilot] >= (self._alpha * probabilities[index_copilot_action]):
                 action_to_apply = self.pilot_action
                 print("Testing mode: PILOT")
             else:
