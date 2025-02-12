@@ -18,11 +18,12 @@ class Params:
     other configs
     """
     model_seed = 5
-    model_total_timesteps = 50_000
-    log_path = "./logs_2024-10-07/"
+    max_episode_steps=10_000
+    model_total_timesteps = 100_000
+    log_path = "./20250122/"
     # increase this number later
     n_eval_episodes = 10
-    eval_result_file = os.path.join(log_path, "baseline-random-results.csv")
+    eval_result_file = os.path.join(log_path, "baseline-SimpleCornerEnvRS10.csv")
 
 def save_results(r,l,g,file_name):
     data = {'Reward': r, 'Len': l, 'Goal':g}
@@ -34,18 +35,19 @@ def save_results(r,l,g,file_name):
 def run_experiment(want_to_train=True):
     args = Params()
     # Initialize the environment
-    env = CornerEnv()
-    env = Monitor(env, filename=args.log_path, info_keywords=("is_success","corner",))
-    # https://github.com/openai/gym/issues/681
-    env.action_space.np_random.seed(args.model_seed)
-
+    #env = CornerEnv()
+    env = SimpleCornerEnvRS10(args.max_episode_steps)
+    env.set_trajectory_path(args.log_path)
+    env = Monitor(env, filename=args.log_path, info_keywords=env.get_info_keywords())
     total = 0
     reward_sum = 0
     reward_array = []
     len_total = []
     goal=[]
     steps = 0
-    obs = env.reset()
+    # https://github.com/openai/gym/issues/681
+    # env.seed(args.model_seed)
+    obs, _ = env.reset(seed=args.model_seed)
 
     if not os.path.exists(args.log_path):
         os.makedirs(args.log_path)
@@ -54,13 +56,14 @@ def run_experiment(want_to_train=True):
 
     while True:
         action = env.action_space.sample()
-        obs, reward, done, info = env.step(action)
+        # return obs, reward, done, self.truncated, info
+        obs, reward, done, truncated, info = env.step(action)
         # print("obs=", obs, "reward=", reward, "done=", done)
         steps = steps + 1
         reward_sum = reward_sum + reward
         # if an episode ends
         if done or args.model_total_timesteps < steps:
-            if done:
+            if done and not truncated:
                 goal.append(True)
                 print("Goal reached! rew = ", reward_sum)
                 print("Goal reached! len = ", steps)
