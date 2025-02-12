@@ -37,7 +37,8 @@ class LaggyPilot(Pilot):
         """
         _states = []
 
-        if self._rng.random() <= self._alpha or self.last_action is None:
+        if self._rng.random() >= self._alpha or self.last_action is None:
+
             # Update last_action with a new action from the model
             action, _states = self.get_action_from_model(obs)
             self.last_action = action
