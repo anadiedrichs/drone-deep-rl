@@ -63,7 +63,7 @@ class Params:
     n_eval_episodes = 10
     eval_result_file = os.path.join(log_path, "results.csv")
     copilot_alpha = 0.5  # copilot level of tolerance
-    eval_max_steps = 1_000
+    eval_max_steps = 100_000
 
 
 # 3) CALLBACKS
@@ -503,9 +503,132 @@ def run_experiment_generate_trajectories_for_laggy_pilot():
     logger.run_experiment(file_name="laggy_0_5", debug=True, train=True)
 
 
+
+def run_experiment_copilot(seed: int, alpha: float, is_pilot_noisy: bool, copilot_alpha: float):
+    args = Params()
+
+    if alpha is not None:
+        args.alpha = alpha
+
+    if copilot_alpha is not None:
+        args.copilot_alpha = copilot_alpha
+
+    if seed is not None:
+        args.model_seed = seed
+
+    # pilot_model is the bc_policy,
+    # the model policy trained with imitation learning
+    # the optimal model
+    pilot_model = load_create_bc_model(args.pilot_model_path, args.log_path)
+
+    if is_pilot_noisy:
+        args.log_path = "logs-noisy-results/copilot_alpha_"+str(copilot_alpha)+"/"
+        args.eval_result_file = os.path.join(args.log_path, "noisy-copilot-room1-results.csv")
+        pilot = NoisyPilot(model=pilot_model, seed=args.model_seed, alpha=args.alpha)
+    else:        
+        args.log_path = "logs-laggy-results/copilot_alpha_"+str(copilot_alpha)+"/"
+        args.eval_result_file = os.path.join(args.log_path, "laggy-copilot-room1-results.csv")
+        pilot = LaggyPilot(model=pilot_model, seed=args.model_seed, alpha=args.alpha)
+
+    # Inicializar BetaAdjuster
+    # quitar pues no lo usamos
+    beta_adjuster = BetaAdjuster(initial_beta=0.0, max_beta=1.0, total_episodes=args.model_total_episodes)
+    # Initialize the environment
+    env = CopilotCornerEnv(model=pilot_model,
+                           pilot=pilot,
+                           seed=args.model_seed,
+                           alpha=args.copilot_alpha,
+                           beta_adjuster=beta_adjuster)
+    env.training_mode = False
+    _, model = init_env_log_path(env, args.model_seed, pilot_model, args.log_path)
+    # set the bc expert model to the copilot
+    env.set_model(pilot_model)
+    obs, _ = env.reset(seed=args.model_seed)
+    total = 0
+    reward_sum = 0
+    reward_array = []
+    len_total = []
+    success = []
+    steps = 0
+
+    # Evaluate the policy
+    while True:
+        # print("obs=", obs)
+        action, _ = model.predict(obs,deterministic=True)
+        # Convertir la acción a un array
+        # if isinstance(action, (int, float)):
+        #    action = np.array([action])
+        # Validar que la acción sea compatible con el entorno
+        #if len(action.shape) == 0:
+        #    action = np.expand_dims(action, axis=0)
+        print("Action:", action, "Action Shape:", action.shape)
+        print("Observation:", obs, "Observation Shape:", obs.shape)
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated  # Para mantener la lógica original
+        print("obs=", obs, "reward=", reward, "done=", done)
+        steps = steps + 1
+        reward_sum = reward_sum + reward
+        if isinstance(info, list):
+            info = info[0]  # Accede al diccionario correspondiente al único entorno
+        # Determinar si el episodio fue truncado o terminó normalmente
+        is_sucess = info.get("is_success")
+
+        if done or (steps == args.eval_max_steps):
+            print("rew = ", reward_sum)
+            print("len = ", steps)
+            # total reward per episode
+            reward_array.append(reward_sum)
+            # total steps taken per episode
+            len_total.append(steps)
+            if done and is_sucess:
+                # Goal reached
+                success.append(1)
+            else:
+                success.append(0)
+
+            # Accede al entorno interno y se reinicia con la semilla
+            if hasattr(env, 'envs') and len(env.envs) > 0:
+                obs = env.envs[0].reset(seed=args.model_seed)
+            else:
+                obs = env.reset()
+            # Extraer solo observaciones si env.reset() retorna un tuple
+            if isinstance(obs, tuple):
+                obs, _ = obs
+            total += 1
+            # reset variables
+            reward_sum = 0
+            steps = 0
+        # evaluate n_eval_episodes
+        if total == args.n_eval_episodes:
+            break
+
+    save_results(reward_array,len_total,success,args.eval_result_file+"_results_.csv")
+    # close Webots simulator
+    # env.simulationQuit(0)
+    print("run_experiment ended")
+
 if __name__ == '__main__':
+
+    # Laggy Pilot 0.25
+    run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.01)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.025)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.05)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=1)
+    # Laggy Pilot 0.8
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.8, copilot_alpha=0.01)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.8, copilot_alpha=0.025)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.8, copilot_alpha=0.05)
+    # run_experiment_copilot(is_pilot_noisy=False, seed=5, alpha=0.8, copilot_alpha=1)
+    
+    # Noisy Pilot
+    # run_experiment_copilot(is_pilot_noisy=True, seed=5, alpha=0.25, copilot_alpha=0.01)
+    # run_experiment_copilot(is_pilot_noisy=True, seed=5, alpha=0.25, copilot_alpha=0.025)
+    # run_experiment_copilot(is_pilot_noisy=True, seed=5, alpha=0.25, copilot_alpha=0.05)
+    # run_experiment_copilot(is_pilot_noisy=True, seed=5, alpha=0.25, copilot_alpha=1)
+    
     # generate a Trajectories dataset
     # run_experiment_generate_trajectories_for_laggy_pilot()
+    # 2025-02-10
     # 1) laggy train
     # run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.5, want_to_train=True)
     # 2) test laggy
@@ -513,7 +636,7 @@ if __name__ == '__main__':
     # run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.25, want_to_train=False)
     # run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.5, want_to_train=False)
     # run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=0.75, want_to_train=False)
-    run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=1, want_to_train=False)
+    # run_experiment(is_pilot_noisy=False, seed=5, alpha=0.25, copilot_alpha=1, want_to_train=False)
     
     # 4) noisy train
     # run_experiment(is_pilot_noisy=True, seed=5, alpha=0.3, copilot_alpha=0.5, want_to_train= True)
