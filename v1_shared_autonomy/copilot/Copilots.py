@@ -44,9 +44,18 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
         self.policy_net = None
         #self.set_model(model)
         self.beta_adjuster = beta_adjuster  # Ajustador de beta
+        self.action_name = ["Go forward", "Go backward", "Go right", "Go left", "Turn right", "Turn left"]
+        self.distance_matrix_action = np.array([
+            [0, 4, 2.0, 2.0, 3, 3],  # Go forward
+            [4, 0, 2.0, 2.0, 3, 3],  # Go backward
+            [2.0, 2.0, 0, 4, 3, 3.0],  # Go right (Modificado: Go Right ↔ Go Left = 4)
+            [2.0, 2.0, 4, 0, 3, 3],  # Go left
+            [3, 3, 3, 3, 0, 4],  # Turn right (Modificado: Turn Right ↔ Turn Left = 4)
+            [3, 3, 3.0, 3, 4, 0]   # Turn left
+        ])
         # Debugging print statements (can be removed in production)
-        print("action_space")
-        print(self.action_space)
+        # print("action_space")
+        # print(self.action_space)
 
     def set_model(self, model: PPO):
         """
@@ -84,7 +93,8 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
             if arreglo_tensor[i].item() == value:
                 return i
         return -1
-    def choose_action(self, obs):
+    
+    def choose_action_oldie(self, obs):
         """
         Selects an action based on the observation, blending decisions from the pilot and co-pilot.
 
@@ -155,3 +165,87 @@ class CopilotCornerEnv(SimpleCornerEnvRS10, Pilot):
                 print("Testing mode: COPILOT")
 
         return action_to_apply, _states
+    
+    def Q(self, a, a_opt):
+        """Calcula Q(s,a) basado en la distancia discreta entre la acción propuesta y la óptima."""
+        distance = self.distance_matrix_action[a, a_opt]
+        return np.exp(-distance)
+
+    def choose_action(self, obs):
+        """
+        Selects an action based on the observation, blending decisions from the pilot and co-pilot.
+
+        Args:
+            obs (array-like): The observation input to the environment.
+            pilot_action (int): The action chosen by the pilot.
+
+        Returns:
+            tuple:
+                - action_to_apply (int): The final action chosen.
+                - _states (list): Additional state information (if applicable).
+        """
+        # Convert observation to tensor
+        obs_tensor = torch.tensor(obs).float().unsqueeze(0)
+
+        print(f"obs_tensor shape before: {obs_tensor.shape}")  
+
+        # Obtener el número de entradas esperadas por la red
+        expected_input_dim = self.policy_net.mlp_extractor.policy_net[0].in_features  # Tamaño esperado
+
+        # Si obs_tensor tiene más dimensiones de las esperadas, recortamos
+        if obs_tensor.shape[1] > expected_input_dim:
+            obs_tensor = obs_tensor[:, :expected_input_dim]  # Recortar última columna
+
+        print(f"obs_tensor shape after: {obs_tensor.shape}, expected: {expected_input_dim}") 
+
+        # Compute logits and probabilities from the policy network
+        with torch.no_grad():
+            
+            latent_pi = self.policy_net.features_extractor(obs_tensor)
+            logits = self.policy_net.mlp_extractor.policy_net(latent_pi)
+            action_logits = self.policy_net.action_net(logits)
+
+        action_logits = action_logits.squeeze(0)
+        probabilities = F.softmax(action_logits, dim=-1)
+
+        # Debugging outputs
+        print("probabilities")
+        print(probabilities)
+
+        # Sort actions by preference
+        action_preferences = torch.argsort(action_logits, descending=True)
+        print("action_preferences")
+        print(action_preferences)
+
+        index_pilot = self.__get_index_from_value(self.pilot_action, action_preferences)
+        copilot_action = action_preferences[0].item()
+        
+        q_pilot = self.Q(self.pilot_action, copilot_action)
+
+
+        index_copilot_action = 0
+        _states = []
+        action_to_apply = 0
+ 
+        print(f"Pilot probability action {probabilities[index_pilot]}")
+        print(f"copilot probability action {self._alpha * probabilities[index_copilot_action]}")
+        print(f"Alpha copilot {self._alpha}")
+        print(f"q_pilot value {q_pilot}")
+    
+        if q_pilot >= ( self._alpha):
+            action_to_apply = self.pilot_action
+            print("action PILOT")
+        else:
+            action_to_apply = copilot_action
+            print("action COPILOT")
+        
+        #
+        #if probabilities[index_pilot] >= (self._alpha * probabilities[index_copilot_action]):
+        #    action_to_apply = self.pilot_action
+        #    print("action PILOT")
+        #else:
+        #    action_to_apply = copilot_action
+        #    print("action COPILOT")
+
+        return action_to_apply, _states
+    
