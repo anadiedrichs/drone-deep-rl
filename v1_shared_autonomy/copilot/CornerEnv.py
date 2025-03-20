@@ -772,6 +772,7 @@ class SimpleCornerEnvShaped20(DroneRobotSupervisor):
     MIN_EPISODE_SCORE = -5_000
     MAX_EPISODE_SCORE = 5_000
 
+
     def __init__(self, max_episode_steps=20_000):
         # call DroneRobotSupervisor constructor
         super().__init__(max_episode_steps)
@@ -927,7 +928,7 @@ class SimpleCornerEnvShaped20(DroneRobotSupervisor):
         if obs_min <= self.MIN_DIST_OBSTACLES:
             reward = -10
         # 4) if the drone falls, the episode is truncated
-        if self.alt < 0.1:
+        if self.alt < 0.1 or self.is_out_of_bounds():
             reward = -20
         # 5) otherwise
         if reward == 0:
@@ -1181,7 +1182,7 @@ class SimpleCornerEnvRF(DroneRobotSupervisor):
         print("Cumulative score " + str(self.episode_score))
         return normalized_reward
 
-
+########################################################################################
 class SimpleCornerEnvRS10(DroneRobotSupervisor):
     """
     A Crazyflie base-pilot with the mission of reaching a target
@@ -1197,6 +1198,9 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
     FILE_NAME_LOCATION = "location.txt"
     MIN_EPISODE_SCORE = -1_000
     MAX_EPISODE_SCORE = 1_000
+    # Definir los límites del escenario (2x2 metros)
+    X_MIN, X_MAX = -1.0, 1.0
+    Y_MIN, Y_MAX = -1.0, 1.0
 
     def __init__(self, max_episode_steps=20_000, pilot = None):
         # call DroneRobotSupervisor constructor
@@ -1245,6 +1249,20 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
         self.status = None
         self.put_drone_in_the_center()
         #self._init_rotation()
+    
+    def is_out_of_bounds(self):
+        """
+        Verifica si el dron ha salido de los límites del escenario.
+        :return: True si el dron está fuera del área definida, False en caso contrario.
+        """
+        position_field = self.robot.getField("translation")
+        x,y,_ = position_field.getSFVec3f()  
+        if x < self.X_MIN or x > self.X_MAX or y < self.Y_MIN or y > self.Y_MAX:
+            print("¡El dron ha salido del escenario!")
+            return True
+        else:
+            return False
+        
 
     def get_distance_to_corners(self):
         d = []
@@ -1253,6 +1271,22 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
         #print(d)
         d = np.array(d)
         return d
+    
+    
+    
+    def achieve_goal(self):
+        """
+        The drone completes its task when it is at a reasonable distance from the target, 
+        within the scenario limits, and at an appropriate altitude."
+        """
+
+        self.dist_min_target = self.get_distance_to_corners().min()
+        
+        if self.dist_min_target <= self.DISTANCE_THRESHOLD and self.alt > 0.5:
+            return True
+        else:
+            return False
+        
 
     def is_done(self):
         """
@@ -1272,10 +1306,15 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
             self.is_success = False
             self.truncated = True
             self.corner = "fall"
+        if self.is_out_of_bounds():  # case out of bounds
+            done = True
+            self.terminated = True
+            self.is_success = False
+            self.truncated = True
+            self.corner = "out_of_bounds"
         # 2) if the drone reach a corner cone
         distance = self.get_distance_to_corners()
-        self.dist_min_target = distance.min()
-        if self.dist_min_target <= self.DISTANCE_THRESHOLD:
+        if self.achieve_goal():
             done = True
             self.terminated = True
             self.is_success = True
@@ -1347,10 +1386,10 @@ class SimpleCornerEnvRS10(DroneRobotSupervisor):
         # print in meters
         print("Obstacle dist : " + str(obs_min / 1000))
         # 1) drone reaches the target
-        if self.dist_min_target <= self.DISTANCE_THRESHOLD:
+        if self.achieve_goal():
             reward = 10
         # 2) if the drone falls, the episode is truncated
-        if self.alt < 0.1:
+        if self.alt < 0.1 or self.is_out_of_bounds():
             reward = -10
         # 3) episode truncated
         if (self.episode_score <= self.MIN_EPISODE_SCORE or
