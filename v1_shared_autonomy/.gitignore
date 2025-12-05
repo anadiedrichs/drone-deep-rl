@@ -1,0 +1,4 @@
+# Ignore all the logs folders
+logs*/
+# Ignore tensorflow logs
+events*

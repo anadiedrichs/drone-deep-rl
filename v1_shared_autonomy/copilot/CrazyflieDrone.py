@@ -2,11 +2,12 @@
 More runners for discrete RL algorithms can be added here.
 """
 import sys
-import pandas as pd
+import time
 from controller import Supervisor
 from controller import Keyboard  # user input
 from math import cos, sin, pi
-from gymnasium.spaces import Sequence, Box, Discrete, Tuple
+from gymnasium.spaces.box import Box
+from gymnasium.spaces.discrete import Discrete
 from utils.utilities import *
 from utils.pid_controller import *
 from pilots.pilot import *
@@ -35,7 +36,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
     Implementation of the Crazyflie environment for Webots.
     """
 
-    def __init__(self, max_episode_steps=30_000):
+    def __init__(self, max_episode_steps=30_000,pilot=None, tm=True):
         super().__init__()
         self.render_mode = None  # no render need: None
         self.max_episode_steps = max_episode_steps
@@ -53,7 +54,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.dist_front = 0
         self.pilot_action = None
         self.obs_copilot = None  # copilot input
-        self.training_mode = False  # True if we are training a copilot
+        self.training_mode = tm  # True if we are training a copilot
         self.obs_array = None  # base-pilot input
         self.observation_space = self._get_observation_space()
 
@@ -109,8 +110,11 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.is_success = False
         self.terminated = False
         self.truncated = False
-        self.pilot = None
-        self.alpha = 0.5  # copilot coefficient
+        if pilot is not None:
+            self.pilot = pilot
+            self._set_observation_space(Box(low=-1, high=1, shape=(11,), dtype=np.float64))
+        else:
+            self.pilot = None
         # to be done ?
         # self.screenshoot_counter = 0
         self.pen_activated = False
@@ -120,6 +124,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         self.drone_trajectory_path = None
         self.x_pos_initial = None
         self.y_pos_initial = None
+        self._rng = None  # Independent random generator for this instance
 
         self._initialization()
 
@@ -132,7 +137,9 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         It must be called always after __init__ and reset.
         """
         self.timestep = int(self.getBasicTimeStep())
-
+        # Get keyboard, used by trajectory generation
+        # self._keyboard = Keyboard()
+        # self._keyboard.enable(self.timestep)
         # Crazyflie velocity PID controller
         self.PID_crazyflie = pid_velocity_fixed_height_controller()
 
@@ -192,7 +199,7 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # base-pilot & copilot
         # set base-pilot via set_pilot method please
         # self.base-pilot = None
-        self.alpha = 0.5  # copilot coefficient
+        self.beta = 0.5  # copilot coefficient
         self.obs_array = self.get_default_observation()
         self.obs_copilot = self.get_default_observation()
         # self.screenshoot_counter = 0
@@ -348,27 +355,32 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
 
     def get_default_observation(self):
         """
-         This method just returns a zero vector as a default observation
+         This method just returns a zero vector (np.array) as a default observation
         """
         return np.array([0.0 for _ in range(self.observation_space.shape[0])])
 
     def reset(self, seed=None, options=None):
         """
-        Reset the simulation
+        Reset the simulation and gym env.
+        Since Gym v0.21 instead of env.seed(your_seed) you must use
+        env.reset(seed=your_seed)
         """
         self.simulationResetPhysics()
         self.simulationReset()
         super().step(self.timestep)
+
+        self._rng = np.random.default_rng(seed)
 
         # reset to initial values
         self._initialization()
 
         # Internals
         super().step(self.timestep)
-
+        # start the state machine to take off the drone.
         self.take_off()
 
-        file_name = "trajectory_x_"+str(self.x_global)+"_y_"+str(self.y_global)
+        current_time_in_seconds = int(time.time())
+        file_name = "trajectory_x_"+str(self.x_global)+"_y_"+str(self.y_global)+"_t_"+str(current_time_in_seconds)
         self.set_trajectory_file_name(file_name)
         self.x_pos_initial = self.x_global
         self.y_pos_initial = self.y_global
@@ -483,18 +495,15 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
                v_x, v_y,
                altitude, range_front_value, range_back_value, range_right_value,
                range_left_value]
-
         arr = np.array(arr)
         # we store in obs_array only the sensors observations (10 values)
         self.obs_array = arr
         # for copilot input (11 values)
-
         #print("DEBUG get_observations "+str(arr))
         if self.pilot is not None:
             action, _ = self.pilot.choose_action(self.obs_array)
             arr = np.append(arr, normalize_to_range(action, 0, 6, -1.0, 1.0, clip=True))
             self.obs_copilot = np.array(arr)
-
         return arr
 
     def print_debug_status(self):
@@ -570,32 +579,47 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
             self.past_y_global = self.y_global
             self.past_z_global = self.z_global
 
+    def get_action(self, action):
+        """
+        Returns the action to be executed according to internal states
+        @type action: int
+        """
+        # If the drone is flying with a pilot, 
+        # the drone is a copilot
+        if self.pilot is not None:
+            # Get the action chosen by the pilot
+            self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
+
+            # En entrenamiento y testeo llamamos a choose_action, que maneja beta/alpha
+            action, _ = self.choose_action(self.obs_copilot)
+
+            mode = "training" if self.training_mode else "testing"
+            print(f"Copilot {mode}: Action chosen = {action}")
+
+        # otherwise, the drone is autonomous, return the action itself
+        return action
+    
     def step(self, action):
+        # do "nothing" in this case
+        if action < 0 :
+            return self.step_nope(action)
 
         forward_desired = 0
         sideways_desired = 0
         yaw_desired = 0
         self.increment_episode_step()
-        action = int(action)
+        
+        action = int(self.get_action( action))
 
-        if self.pilot is not None:
-            self.pilot_action, _ = self.pilot.choose_action(self.obs_array)
-            if self.training_mode:
-                print("copilot training ")
-                action = self.pilot_action
-            else:
-                print("copilot testing ")
-                # add alpha_parameter
-                action, _ = self.choose_action(self.obs_copilot)
         print("ACTION number " + str(action))
         if action == 0:
-            forward_desired = 0.005  # go forward
+            forward_desired = 0.09  # go forward 0.005 0.09
         elif action == 1:
-            forward_desired = -0.005  # go backwards
+            forward_desired = -0.09  # go backwards
         elif action == 2:  # move left
-            sideways_desired = 0.005
+            sideways_desired = 0.09
         elif action == 3:
-            sideways_desired = -0.005  # move right
+            sideways_desired = -0.09  # move right
         elif action == 4:
             yaw_desired = 0.01  # turn left
         elif action == 5:
@@ -606,8 +630,44 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         #    yaw_desired = 0
         else:
             print("Not a valid action")
-
             # PID velocity controller with fixed height
+        motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
+                                             yaw_desired, self.height_desired,
+                                             self.roll, self.pitch, self.yaw_rate,
+                                             self.alt, self.v_x, self.v_y)
+        self._setup_motors_velocity(motor_power)
+        super().step(self.timestep)
+        # print("====== PID input ACTION =======\n")
+        # print("height_desired   " + str(self.height_desired) )
+        # print("forward_desired   " + str(forward_desired) )
+        # print("sideways_desired   " + str(sideways_desired) )
+        # print("yaw_desired   " + str(yaw_desired) )
+        # print("==================================\n")
+        # self.print_debug_status()
+        # get the environment observation (sensor readings)
+        obs = self.get_observations()
+        # Reward
+        reward = self.get_reward(action)
+        # update times
+        self.past_time = self.getTime()
+        #self.past_x_global = self.x_global
+        #self.past_y_global = self.y_global
+        # successful episode ?
+        done = self.is_done()
+        info = self.get_info()
+        # Registrar la trayectoria en cada paso
+        self.record_trajectory()
+        return obs, reward, done, self.truncated, info
+
+    def step_nope(self,action):
+        # Do nothing, just for simulation keep running in webots.
+        forward_desired = 0
+        sideways_desired = 0
+        yaw_desired = 0
+        self.increment_episode_step()
+        action = int(action)
+
+        # PID velocity controller with fixed height
         motor_power = self.PID_crazyflie.pid(self.dt, forward_desired, sideways_desired,
                                              yaw_desired, self.height_desired,
                                              self.roll, self.pitch, self.yaw_rate,
@@ -633,12 +693,8 @@ class DroneRobotSupervisor(Supervisor, gym.Env):
         # successful episode ?
         done = self.is_done()
         info = self.get_info()
-        # Registrar la trayectoria en cada paso
-        self.record_trajectory()
-        return obs, reward, done, self.truncated, info
 
-    def set_pilot(self, p: Pilot):
-        self.pilot = p
+        return obs, reward, done, self.truncated, info
 
     def get_info(self):
         """

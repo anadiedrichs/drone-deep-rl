@@ -1,41 +1,47 @@
 import numpy as np
 from stable_baselines3 import PPO
-from pilot import Pilot
+from pilots.pilot import Pilot
 
 class LaggyPilot(Pilot):
+    """
+    A specialized Pilot that simulates laggy behavior by occasionally repeating the last action.
+    This introduces temporal dependency in the policy, mimicking a delayed response system.
+    """
 
-    def __init__(self, model: PPO, seed=1):
+    def __init__(self, model, seed=1, alpha=0.5, action_space=6):
         """
-        LaggyPilot constructor
+        Initializes the LaggyPilot object.
 
         Args:
-            seed (int): an integer number to initialize the random generator
-            model (PPO): a trained PPO reinforcement learning model
-
-        Returns:
-            tipo: LaggyPilot
+            model (PPO): A trained PPO reinforcement learning model.
+            seed (int, optional): An integer used to initialize the random number generator. Defaults to 1.
+            alpha (float, optional): The lag probability. For example, if alpha=0.3, the pilot behaves laggy 30% of the time. Defaults to 0.5.
+            action_space (int, optional): The number of discrete actions the agent can perform. Defaults to 7.
         """
-        if model is None or not isinstance(model, PPO):
-            raise ValueError("The model must be a non-null instance of PPO.")
+        super().__init__(model, seed, alpha, action_space)
 
-        self.__seed = seed
-        np.random.seed(self.__seed)
-        self.model = model
         self.last_action = None
 
-    def choose_action(self, obs, lag_prob=0.3):
+    def choose_action(self, obs):
+        #TODO check type for obs
         """
-        This method implements the LaggyPilot policy.
+        Implements the LaggyPilot policy, which either selects a new action or repeats the last action based on the lag probability.
 
         Args:
-            obs: an observation returned by an environment (Gym.Env)
-            lag_prob: If lag_prob is 0.3, a 30% of the time will behave as a laggy
-            pilot, otherwise it will return the action of the normal policy.
+            obs (array-like): An observation returned by the environment (Gym.Env).
 
         Returns:
-            tipo: action (int)
+            tuple:
+                - action (int): The selected action. If lagging, this will be the previously executed action.
+                - _states (list): Additional state information (if applicable, returned when using the model).
         """
-        action, _states = self.model.predict(obs, deterministic=True)
-        if self.last_action is None or np.random.random() <= lag_prob:
+        _states = []
+
+        if self._rng.random() >= self._alpha or self.last_action is None:
+
+            # Update last_action with a new action from the model
+            action, _states = self.get_action_from_model(obs)
             self.last_action = action
+
+        # Otherwise, return the previously executed action
         return self.last_action, _states

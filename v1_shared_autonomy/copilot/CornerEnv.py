@@ -755,6 +755,7 @@ class CornerEnvShapedDirection(CornerEnv):
         normalized_reward = normalize_to_range(reward, -20, 20, -1, 1)
         print("DEBUG normalized reward " + str(normalized_reward))
         return normalized_reward
+
 class SimpleCornerEnvShaped20(DroneRobotSupervisor):
     """
     A Crazyflie base-pilot with the mission of reaching a target
@@ -768,8 +769,9 @@ class SimpleCornerEnvShaped20(DroneRobotSupervisor):
     MIN_DIST_OBSTACLES = 100
     FILE_NAME_ROTATION = "rotation.txt"
     FILE_NAME_LOCATION = "location.txt"
-    MIN_EPISODE_SCORE = -50_000
-    MAX_EPISODE_SCORE = 50_000
+    MIN_EPISODE_SCORE = -5_000
+    MAX_EPISODE_SCORE = 5_000
+
 
     def __init__(self, max_episode_steps=20_000):
         # call DroneRobotSupervisor constructor
@@ -918,7 +920,7 @@ class SimpleCornerEnvShaped20(DroneRobotSupervisor):
         # Calculate the minimum distance to the walls
         obs_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
         # print in meters
-        print("obstacle dist : " + str(obs_min / 100))
+        print("obstacle dist : " + str(obs_min / 1000))
         # 1) drone reaches the target
         if self.dist_min_target <= self.DISTANCE_THRESHOLD:
             reward = 20
@@ -926,11 +928,11 @@ class SimpleCornerEnvShaped20(DroneRobotSupervisor):
         if obs_min <= self.MIN_DIST_OBSTACLES:
             reward = -10
         # 4) if the drone falls, the episode is truncated
-        if self.alt < 0.1:
+        if self.alt < 0.1 or self.is_out_of_bounds():
             reward = -20
         # 5) otherwise
         if reward == 0:
-            reward = 1800 * (self.prev_dist_min_target - self.dist_min_target)
+            reward = 2000 * (self.prev_dist_min_target - self.dist_min_target)
         self.prev_dist_min_target = self.dist_min_target
         print("Reward value " + str(reward))
         # update cumulative reward
@@ -1162,7 +1164,7 @@ class SimpleCornerEnvRF(DroneRobotSupervisor):
         # Calculate the minimum distance to the walls
         obs_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
         # print in meters
-        aux = obs_min / 100
+        aux = obs_min / 1000
         print("OBSTACULO dist : " + str(aux))
         print("Obstacle penalization: " + str(self.walls_proximity_penalization(aux)))
         reward += self.walls_proximity_penalization(aux)
@@ -1178,4 +1180,288 @@ class SimpleCornerEnvRF(DroneRobotSupervisor):
         # update cumulative reward
         self.episode_score += normalized_reward
         print("Cumulative score " + str(self.episode_score))
+        return normalized_reward
+
+########################################################################################
+class SimpleCornerEnvRS10(DroneRobotSupervisor):
+    """
+    A Crazyflie base-pilot with the mission of reaching a target
+    in a square room.
+    """
+    CORNERS = ["cone_1"]
+    TARGET_LIST = []
+    # 15 cm minimal distance to target
+    DISTANCE_THRESHOLD = 0.15
+    # 100 mm
+    MIN_DIST_OBSTACLES = 100
+    FILE_NAME_ROTATION = "rotation.txt"
+    FILE_NAME_LOCATION = "location.txt"
+    MIN_EPISODE_SCORE = -1_000
+    MAX_EPISODE_SCORE = 1_000
+    # Definir los límites del escenario (2x2 metros)
+    X_MIN, X_MAX = -1.0, 1.0
+    Y_MIN, Y_MAX = -1.0, 1.0
+
+    def __init__(self, max_episode_steps=20_000, pilot = None):
+        # call DroneRobotSupervisor constructor
+        super().__init__(max_episode_steps, pilot)
+        self.dist_min_target = 0
+        self.prev_dist_min_target = 0
+        self.prev_dir_target = 0
+        self.corner = None
+        self.x_init = None
+        self.y_init = None
+        self.status = None
+        self.closest_corner = None
+        self.robot = self.getFromDef('crazyflie')
+        if self.robot is None:
+            raise ValueError("Check drone name should be crazyflie, see DEF in world config.")
+
+        self._init_targets()
+        self._initialization()
+
+    def _init_targets(self):
+        # 1) get TARGET info
+        self.corner = None
+        self.dist_min_target = 0
+        self.prev_dist_min_target = 0
+        for name in self.CORNERS:
+            t = self.getFromDef(name)
+            if t is None:
+                raise ValueError("Check target_name or see DEF in world config.")
+            self.TARGET_LIST.append(t)
+
+    def put_drone_in_the_center(self):
+        position_field = self.robot.getField("translation")
+        z = position_field.getSFVec3f()[2]  # Mantener la coordenada Z actual
+        nueva_posicion = [0, 0, z]
+        self.x_init = nueva_posicion[0]
+        self.y_init = nueva_posicion[1]
+        position_field.setSFVec3f(nueva_posicion)
+
+    def _initialization(self):
+        super()._initialization()
+        print("DEBUG episode score "+str(self.episode_score))
+        self.dist_min_target = 0
+        self.corner = None
+        self.prev_dist_min_target = 0
+        self.prev_dir_target = 0
+        self.status = None
+        self.put_drone_in_the_center()
+        #self._init_rotation()
+    
+    def is_out_of_bounds(self):
+        """
+        Verifica si el dron ha salido de los límites del escenario.
+        :return: True si el dron está fuera del área definida, False en caso contrario.
+        """
+        position_field = self.robot.getField("translation")
+        x,y,_ = position_field.getSFVec3f()  
+        if x < self.X_MIN or x > self.X_MAX or y < self.Y_MIN or y > self.Y_MAX:
+            print("¡El dron ha salido del escenario!")
+            return True
+        else:
+            return False
+        
+
+    def get_distance_to_corners(self):
+        d = []
+        for t in self.TARGET_LIST:
+            d.append(get_distance_from_target(self.robot, t))
+        #print(d)
+        d = np.array(d)
+        return d
+    
+    
+    
+    def achieve_goal(self):
+        """
+        The drone completes its task when it is at a reasonable distance from the target, 
+        within the scenario limits, and at an appropriate altitude."
+        """
+
+        self.dist_min_target = self.get_distance_to_corners().min()
+        
+        if self.dist_min_target <= self.DISTANCE_THRESHOLD and self.alt > 0.5:
+            return True
+        else:
+            return False
+        
+
+    def is_done(self):
+        """
+        Method call by step function to know if the episode ends.
+        Return True when:
+         * the drone reach a target corner
+         * the drone falls
+         * reward reaches a threshold
+         """
+        done = False
+        # 1) if the drone fell to the ground
+        print("self.alt ", str(self.alt))
+        # if the drone falls, the episode is truncated
+        if self.alt < 0.1:  # alt is in meters
+            done = True
+            self.terminated = True
+            self.is_success = False
+            self.truncated = True
+            self.corner = "fall"
+        if self.is_out_of_bounds():  # case out of bounds
+            done = True
+            self.terminated = True
+            self.is_success = False
+            self.truncated = True
+            self.corner = "out_of_bounds"
+        # 2) if the drone reach a corner cone
+        distance = self.get_distance_to_corners()
+        if self.achieve_goal():
+            done = True
+            self.terminated = True
+            self.is_success = True
+            self.truncated = False
+            self.corner = self.CORNERS[np.argmin(distance)]
+        # 3) it accumulates too much score without reaching the corner
+        if (self.episode_score <= self.MIN_EPISODE_SCORE or
+            self.episode_score >= self.MAX_EPISODE_SCORE):
+            done = True
+            self.terminated = True
+            self.is_success = False
+            self.truncated = True
+            self.corner = "score"
+        if self.episode_step > self.max_episode_steps:
+            done = True
+            self.terminated = True
+            self.is_success = False
+            self.truncated = True
+            self.corner = "max_steps"
+        # Webots bug, webots freezes
+        # if done:
+        #     # Take a picture of the scene
+        #     # Nombre del archivo y calidad (0-100)
+        #     self.exportImage(str(self.screenshoot_counter)+"-captura_pantalla.png", 100)
+        #     self.screenshoot_counter += 1
+        return done
+
+    def get_info_keywords(self):
+        return tuple(["x_init", "y_init", "closest_corner", "is_success",
+                      "corner", "height", "dist_min_target"])
+
+    def get_info(self):
+        """
+        Method call by step function
+        """
+        distance = self.get_distance_to_corners()
+        self.closest_corner = self.CORNERS[np.argmin(distance)]
+        return {"x_init": self.x_init,
+                "y_init": self.y_init,
+                "closest_corner": self.closest_corner,
+                "is_success": self.is_success,
+                "corner": self.corner,
+                "height": self.alt,
+                "dist_min_target": self.dist_min_target}
+
+    def walls_proximity_penalization(self, x):
+        #return -10 * np.exp(-(x/0.2))
+        # return -10 * np.exp(-(x / 0.4))
+        return 50 * x - 10
+
+    def penalization_distance_to_target(self, x):
+        #print(f"Tipo de x: {type(x)}, Valor de x: {x}")
+        return 1 / x
+
+
+    def get_reward(self, action=6):
+        """
+        Reward function for CornerEnv in Webots.
+        Penalizes greater distance to the objective and smaller distance to walls.
+        """
+        reward = 0
+        # Get min distance to corners
+        distance = self.get_distance_to_corners()
+        self.dist_min_target = distance.min()
+        print("Dist to corner1 " + str(self.dist_min_target))
+        # 2) penalize if the drone is too close any wall
+        # Calculate the minimum distance to the walls
+        obs_min = min(self.dist_front, self.dist_back, self.dist_right, self.dist_left)
+        # print in meters
+        print("Obstacle dist : " + str(obs_min / 1000))
+        # 1) drone reaches the target
+        if self.achieve_goal():
+            reward = 10
+        # 2) if the drone falls, the episode is truncated
+        if self.alt < 0.1 or self.is_out_of_bounds():
+            reward = -10
+        # 3) episode truncated
+        if (self.episode_score <= self.MIN_EPISODE_SCORE or
+            self.episode_score >= self.MAX_EPISODE_SCORE) or (self.episode_step > self.max_episode_steps):
+            reward = -10
+        # 5) otherwise
+        if reward == 0:
+            # 5.1) penalize the drone if it is too close to an obstacle
+            if obs_min <= self.MIN_DIST_OBSTACLES:
+                reward += self.walls_proximity_penalization(obs_min/1000)
+            # 5.2) reward function by distance to the target
+            reward += self.penalization_distance_to_target(self.dist_min_target)
+        self.prev_dist_min_target = self.dist_min_target
+        print("Reward value " + str(reward))
+        # Normalize reward
+        normalized_reward = normalize_to_range(reward, -10, 10, -1, 1)
+        print("Normalized reward " + str(normalized_reward))
+        # update cumulative reward
+        self.episode_score += normalized_reward
+        print("Episode cumulative score " + str(self.episode_score))
+        return normalized_reward
+    def get_reward_old(self, action=6):
+        """
+        Reward function for CornerEnv in Webots.
+        Penalizes greater distance to the objective and smaller distance to walls.
+        """
+        reward = 0
+        # if self.past_angular_velocity is None:
+        #    self.past_angular_velocity = self.angular_velocity
+        # if self.past_lineal_velocity is None:
+        #    self.past_lineal_velocity = self.lineal_velocity
+        # np.linalg.norm(state)
+        status = - np.sqrt((self.lineal_velocity ** 2).sum())
+        status -= np.sqrt((self.angular_velocity ** 2).sum())
+        print("DEBUG  status " + str(status))
+        if self.status is None:
+            self.status = status
+        else:
+            reward += status - self.status
+        print("REWARD status " + str(reward))
+        self.status = status
+        # Get min distance to corners
+        distance = self.get_distance_to_corners()
+        self.dist_min_target = distance.min()
+        print("Dist to TARGET: " + str(self.dist_min_target))
+        # 1) drone reaches the target
+        d = 10_000 * (self.prev_dist_min_target - self.dist_min_target)
+        if self.dist_min_target <= self.DISTANCE_THRESHOLD:
+            reward = 30
+        # 5) otherwise, penalize if it goes away from the target
+        else:
+            print("REWARD d: " + str(d))
+            reward += d
+            # 2) penalize if the drone is too close any wall
+            # Calculate the minimum distance to the walls
+            obs_min = np.array(
+                [self.dist_front, self.dist_back,
+                 self.dist_right, self.dist_left]).min()
+            # print in meters
+            print("obstacle distance/1000 [m]: " + str(obs_min / 1000))
+            # 2) penalize the drone if it is too close to an obstacle
+            if obs_min <= self.MIN_DIST_OBSTACLES:
+                reward -= 30
+            # 4) if the drone falls, the episode is truncated
+            if self.alt < 0.1:
+                reward = -30
+        self.prev_dist_min_target = self.dist_min_target
+        print("Final reward " + str(reward))
+        # update cumulative reward
+        self.episode_score += reward
+        print("Episode cumulative score " + str(self.episode_score))
+        # Normalize reward
+        normalized_reward = normalize_to_range(reward, -30, 30, -1, 1)
+        print("DEBUG normalized reward " + str(normalized_reward))
         return normalized_reward

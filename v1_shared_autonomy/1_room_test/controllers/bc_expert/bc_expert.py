@@ -1,16 +1,22 @@
-"""
-Test a laggy base-pilot in room 1
-"""
 import sys
-import os
-from stable_baselines3.common.callbacks import *
-from stable_baselines3.common.monitor import Monitor
+
 import pandas as pd
+import torch
+from gymnasium.spaces.box import Box
+from gymnasium.spaces.discrete import Discrete
+from imitation.algorithms.bc import BC
+from stable_baselines3.common.callbacks import *
+from stable_baselines3.common.logger import configure
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 from utils.utilities import *
 from copilot.CornerEnv import *
-import numpy as np
 
+"""
+Test an expert trained with BC in room 1
+"""
 
 class Params:
     """
@@ -18,12 +24,11 @@ class Params:
     other configs
     """
     model_seed = 5
-    max_episode_steps=10_000
-    model_total_timesteps = 100_000
-    log_path = "./20250122/"
+    model_total_timesteps = 50_000
+    log_path = "./logs_20241208_det_False/"
     # increase this number later
     n_eval_episodes = 10
-    eval_result_file = os.path.join(log_path, "baseline-SimpleCornerEnvRS10.csv")
+    eval_result_file = os.path.join(log_path, "baseline-random-results.csv")
 
 def save_results(r,l,g,file_name):
     data = {'Reward': r, 'Len': l, 'Goal':g}
@@ -32,22 +37,57 @@ def save_results(r,l,g,file_name):
     # Save DataFrame to CSV
     df.to_csv(file_name, index=False,mode='w')
 
+def load_create_bc_model(model_path=None,logdir=None):
+
+    print(model_path)
+    print(logdir)
+    # setup CornerEnv observations & action space
+    o_s = Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+    a_s = Discrete(6)
+    # Create a random number generator
+    rng = np.random.default_rng(0)
+    # logs setup
+    # logs setup
+    log_dir = logdir if logdir is not None else "./bc_evaluate"
+    os.makedirs(log_dir, exist_ok=True)  # Ensure the directory exists
+
+    # trained policy file path
+    model_path = model_path or "./imitation/logs/bc_policy"
+
+    logger = configure(log_dir, ["tensorboard", "csv"])
+    # Init BC
+    bc_model = BC(observation_space=o_s, action_space=a_s,
+                  demonstrations=None, rng=rng, custom_logger=logger)
+
+    # load the trained policy model
+    bc_model.policy.load_state_dict(torch.load(model_path))
+    # Formato de la política entrenada
+    print(bc_model.policy)
+    return bc_model
+
+def print_results(r,l,g):
+    df = pd.DataFrame({'Reward': r, 'Len': l, 'Goal':g})
+    print("Results")
+    print(df)
 def run_experiment(want_to_train=True):
+
+    bc_model = load_create_bc_model()
     args = Params()
     # Initialize the environment
-    #env = CornerEnv()
-    env = SimpleCornerEnvRS10(args.max_episode_steps)
+    env = SimpleCornerEnvRS10()
     env.set_trajectory_path(args.log_path)
+    # https://github.com/openai/gym/issues/681
+    # env.seed(args.model_seed)
+    # Crear un entorno vectorizado
     env = Monitor(env, filename=args.log_path, info_keywords=env.get_info_keywords())
+    env = DummyVecEnv([lambda: env])
     total = 0
     reward_sum = 0
     reward_array = []
     len_total = []
     goal=[]
     steps = 0
-    # https://github.com/openai/gym/issues/681
-    # env.seed(args.model_seed)
-    obs, _ = env.reset(seed=args.model_seed)
+    obs= env.reset()
 
     if not os.path.exists(args.log_path):
         os.makedirs(args.log_path)
@@ -55,21 +95,20 @@ def run_experiment(want_to_train=True):
     save_results(reward_sum, len_total, goal, args.eval_result_file)
 
     while True:
-        action = env.action_space.sample()
+        action = bc_model.policy.predict(obs, deterministic=False)
         # return obs, reward, done, self.truncated, info
-        obs, reward, done, truncated, info = env.step(action)
+        obs, reward, done, info = env.step(action)
         # print("obs=", obs, "reward=", reward, "done=", done)
         steps = steps + 1
         reward_sum = reward_sum + reward
         # if an episode ends
         if done or args.model_total_timesteps < steps:
-            if done and not truncated:
+            if done:
                 goal.append(True)
                 print("Goal reached! rew = ", reward_sum)
                 print("Goal reached! len = ", steps)
             else:
                 goal.append(False)
-
             # total reward per episode
             reward_array.append(reward_sum)
             # total steps taken per episode
@@ -85,11 +124,7 @@ def run_experiment(want_to_train=True):
         if total == args.n_eval_episodes:
             break
 
-    # Create DataFrame
-    df = pd.DataFrame({'Reward': reward_array, 'Len': len_total, 'Goal':goal})
-    print("Results")
-    print(df)
-
+    print_results(reward_array,len_total,goal)
     # close Webots simulator
     # env.simulationQuit(0)
     print("run_experiment ended")
