@@ -71,16 +71,13 @@ Este proyecto está bajo la Licencia Apache-2.0.
 
 Para más detalles, revisa el archivo [LICENSE](LICENSE).
 
-## Memoria
+## Documento técnico
 
-[Documento Memoria técnica versión al 2024-11-01](https://www.dropbox.com/scl/fi/pn8v7tif7i3exfrrzuqmh/CEIA_FIUBA_2024_memoria_20241101.pdf?rlkey=0vzd0gm51qyx5kt28umotmb3h&dl=0)
+Diedrichs, Ana Laura. «Teleoperación asistida de cuadricópteros mediante aprendizaje por refuerzo profundo». Zenodo, 2025. [https://doi.org/10.5281/zenodo.16914761](https://doi.org/10.5281/zenodo.16914761)
+
 
 ## Contacto
 
 Para preguntas, sugerencias o comentarios, puedes contactar a:
 
 - Ana Diedrichs - ana (dot) diedrichs (at) docentes.frm.utn.edu.ar
-
-
-
-[def]: ./v1_shared_autonomy/doc/webots_python_path_config.png
