@@ -1,3 +1,11 @@
+# Ignore all the logs folders
+*logs*/
+# Ignore tensorflow logs
+events*
+# Ignore virtual environment folder
+venv*/
+# Ignore trajectory files
+*trajectory*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
